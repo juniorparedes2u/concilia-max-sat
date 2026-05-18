@@ -52,9 +52,40 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
+        // Opciones de modelos por Proveedor de Inteligencia Artificial
+        const PROVIDER_MODELS = {
+            google: [
+                { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash (Balance óptimo - Recomendado)' },
+                { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro (Ideal para auditorías fiscales de alta precisión)' },
+                { value: 'gemini-2.5-flash-preview-09-2025', label: 'gemini-2.5-flash-preview-09-2025 (Fiel de Pruebas)' },
+                { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash (Velocidad ultrarrápida)' },
+                { value: 'gemini-1.5-pro', label: 'gemini-1.5-pro (Auditoría extensa)' }
+            ],
+            anthropic: [
+                { value: 'claude-3-5-sonnet-latest', label: 'claude-3-5-sonnet-latest (Auditoría de alta precisión)' },
+                { value: 'claude-3-5-haiku-latest', label: 'claude-3-5-haiku-latest (Económico y veloz)' },
+                { value: 'claude-3-opus-20240229', label: 'claude-3-opus-20240229 (Razonamiento analítico profundo)' }
+            ],
+            openai: [
+                { value: 'gpt-4o', label: 'gpt-4o (Modelo insignia inteligente de OpenAI)' },
+                { value: 'gpt-4o-mini', label: 'gpt-4o-mini (Ligero, rápido y económico)' },
+                { value: 'o1-preview', label: 'o1-preview (Razonamiento de problemas de lógica matemática)' },
+                { value: 'o1-mini', label: 'o1-mini (Razonamiento lógico compacto)' },
+                { value: 'gpt-4-turbo', label: 'gpt-4-turbo (Histórico de alto análisis)' }
+            ],
+            openrouter: [
+                { value: 'google/gemini-2.5-flash', label: 'OpenRouter: Google Gemini 2.5 Flash' },
+                { value: 'google/gemini-2.5-pro', label: 'OpenRouter: Google Gemini 2.5 Pro' },
+                { value: 'anthropic/claude-3.5-sonnet', label: 'OpenRouter: Anthropic Claude 3.5 Sonnet' },
+                { value: 'openai/gpt-4o', label: 'OpenRouter: OpenAI GPT-4o' },
+                { value: 'openai/gpt-4o-mini', label: 'OpenRouter: OpenAI GPT-4o-mini' },
+                { value: 'meta-llama/llama-3.3-70b-instruct', label: 'OpenRouter: Meta Llama 3.3 70B' }
+            ]
+        };
+
         // Datos de demostración estructurados con base en los archivos XLS/CSV del cliente
         const DEMO_SAT_CFDI_DATA = [
-            { uuid: '04E7659C-34BF-435F-AE15-23037AFDEA7F', fecha: '2025-12-16', rfcEmisor: 'SIM100812NP3', nombreEmisor: 'SIMETRICAL', rfcReceptor: 'RCU150707C80', nombreReceptor: 'RILE CUERNAVACA', total: 16851.74, subtotal: 0.00, iva: 0.00, tipo: 'Pago', concepto: 'Servicio de pago complementario', metodoPago: 'PPD', formaPago: '03', status: 'Vigente', repDetalles: { uuidRelacionado: 'E5449B0B-730F-4AF3-A259-043337754483', saldoInsoluto: 0.0, impPagado: 8680.35, impSaldoAnt: 8680.35, parcialidad: 1 } },
+            { uuid: '04E7659C-34BF-435F-AE15-23037AFDEA7F', fecha: '2025-12-16', rfcEmisor: 'SIM100812NP3', nombreEmisor: 'SIMETRICAL', rfcReceptor: 'RCU150707C80', nombreReceptor: 'RILE CUERNAVACA', total: 16851.74, subtotal: 0.00, iva: 0.00, tipo: 'Pago', concepto: 'Servicio de pago complementario (REP)', metodoPago: 'PPD', formaPago: '03', status: 'Vigente', repDetalles: { uuidRelacionado: 'E5449B0B-730F-4AF3-A259-043337754483', saldoInsoluto: 0.0, impPagado: 8680.35, impSaldoAnt: 8680.35, parcialidad: 1 } },
             { uuid: 'FBCA8CAE-B7FF-4314-9341-C31B0D63E966', fecha: '2025-12-04', rfcEmisor: 'SIM100812NP3', nombreEmisor: 'SIMETRICAL', rfcReceptor: 'AOM170308I35', nombreReceptor: 'ASIA ORIENTAL MOTORS', total: 3340.96, subtotal: 2880.14, iva: 460.82, tipo: 'Emitido', concepto: 'ClaveProdServ: 84111506 Arrendamiento de Equipo Logístico', metodoPago: 'PUE', formaPago: '03', status: 'Vigente' },
             { uuid: 'NOM-CUQM750616FI4-202512', fecha: '2025-12-16', rfcEmisor: 'SIM100812NP3', nombreEmisor: 'SIMETRICAL', rfcReceptor: 'CUQM750616FI4', nombreReceptor: 'MARIBEL CRUZ QUIROZ', total: 12686.85, subtotal: 14573.74, iva: 0, tipo: 'Nómina', concepto: 'P-001|Sueldos y Salarios, P-024|Gratificación Anual (Aguinaldo)', metodoPago: 'N/A', formaPago: '99', status: 'Vigente', nominaDetalles: { sueldo: 12686.85, aguinaldo: 9335.80, vales: 550.00, retencionIsr: 1886.89 } },
             { uuid: 'NOM-VIDA660314910-202512', fecha: '2025-12-16', rfcEmisor: 'SIM100812NP3', nombreEmisor: 'SIMETRICAL', rfcReceptor: 'VIDA660314910', nombreReceptor: 'ANGELA MARISA VILLAJUANA DOMINGUEZ', total: 26276.55, subtotal: 29670.75, iva: 0, tipo: 'Nómina', concepto: 'P-132|Ingresos asimilados a salarios, Vales despensa', metodoPago: 'N/A', formaPago: '99', status: 'Vigente', nominaDetalles: { sueldo: 26276.55, aguinaldo: 0.00, vales: 700.00, retencionIsr: 3394.20 } },
@@ -66,7 +97,7 @@
         const DEMO_BANK_MOVEMENTS = [
             { id: 1, fecha: '2025-12-04', referencia: 'ARRENDAMIENTO ASIA', descripcion: 'PAGO RECIENTE ASIA ORIENTAL MOTORS', cargo: 0, abono: 3340.96, tipo: 'Ingreso' },
             { id: 2, fecha: '2025-12-09', referencia: 'T. DEBITO PROEPTA', descripcion: 'PAGO DE GASTOS ADM LOCAL', cargo: 180.09, abono: 0, tipo: 'Egreso' },
-            { id: 3, Math: 20251216, fecha: '2025-12-16', referencia: 'SPEI RECIBIDO RILE', descripcion: 'LIQUIDACION FACTURA COMPLEMENTO RILE', cargo: 0, abono: 16851.74, tipo: 'Ingreso' },
+            { id: 3, fecha: '2025-12-16', referencia: 'SPEI RECIBIDO RILE', descripcion: 'LIQUIDACION FACTURA COMPLEMENTO RILE', cargo: 0, abono: 16851.74, tipo: 'Ingreso' },
             { id: 4, fecha: '2025-12-16', referencia: 'NOMINA MARIBEL', descripcion: 'PAGO QUINCENA MARIBEL CRUZ QUIROZ', cargo: 12686.85, abono: 0, tipo: 'Egreso' },
             { id: 5, fecha: '2025-12-18', referencia: 'COMPRA WALMART', descripcion: 'INSUMOS OFICINA REGISTRO', cargo: 332.48, abono: 0, tipo: 'Egreso' }
         ];
@@ -78,9 +109,55 @@
             { codigo: '201-01-001', nombre: 'Proveedores - Proepta', tipo: 'Pasivo' },
             { codigo: '213-01-001', nombre: 'IVA Trasladado Cobrado', tipo: 'Pasivo' },
             { codigo: '401-01-001', nombre: 'Ingresos por Servicios de Arrendamiento', tipo: 'Ingreso' },
-            { codigo: '601-01-001', fontawesome: '', nombre: 'Gastos de Oficina y Papelería', tipo: 'Egreso' },
+            { codigo: '601-01-001', nombre: 'Gastos de Oficina y Papelería', tipo: 'Egreso' },
             { codigo: '601-01-002', nombre: 'Gastos de Mantenimiento General', tipo: 'Egreso' }
         ];
+
+        const safeParseJSON = (text) => {
+            if (!text) return null;
+            let clean = text.trim();
+            if (clean.startsWith('```json')) clean = clean.substring(7);
+            else if (clean.startsWith('```')) clean = clean.substring(3);
+            if (clean.endsWith('```')) clean = clean.substring(0, clean.length - 3);
+            return JSON.parse(clean.trim());
+        };
+
+        // --- FUNCIONES AUXILIARES PARA LECTURA DE XML SIN IMPORTAR NAMESPACE O CASING ---
+        const getElementByLocalName = (parent, localName) => {
+            const tags = parent.getElementsByTagName('*');
+            for (let i = 0; i < tags.length; i++) {
+                const nodeLocalName = tags[i].localName || tags[i].tagName.split(':').pop();
+                if (nodeLocalName && nodeLocalName.toLowerCase() === localName.toLowerCase()) {
+                    return tags[i];
+                }
+            }
+            return null;
+        };
+
+        const getElementsByLocalName = (parent, localName) => {
+            const result = [];
+            const tags = parent.getElementsByTagName('*');
+            for (let i = 0; i < tags.length; i++) {
+                const nodeLocalName = tags[i].localName || tags[i].tagName.split(':').pop();
+                if (nodeLocalName && nodeLocalName.toLowerCase() === localName.toLowerCase()) {
+                    result.push(tags[i]);
+                }
+            }
+            return result;
+        };
+
+        const getAttrIgnoreCase = (element, attrName) => {
+            if (!element) return null;
+            let val = element.getAttribute(attrName);
+            if (val !== null) return val;
+            for (let i = 0; i < element.attributes.length; i++) {
+                const attr = element.attributes[i];
+                if (attr.name.toLowerCase() === attrName.toLowerCase()) {
+                    return attr.value;
+                }
+            }
+            return null;
+        };
 
         function App() {
             // Navegación de Pestañas
@@ -111,7 +188,7 @@
             // --- CONFIGURACIÓN DE APIS LLM ---
             const [apiProvider, setApiProvider] = useState(() => localStorage.getItem('cm_provider_v2') || 'google');
             const [apiKey, setApiKey] = useState(() => localStorage.getItem('cm_key_v2') || '');
-            const [apiModel, setApiModel] = useState(() => localStorage.getItem('cm_model_v2') || 'gemini-2.5-flash-preview-09-2025');
+            const [apiModel, setApiModel] = useState(() => localStorage.getItem('cm_model_v2') || 'gemini-2.5-flash');
             const [showApiKey, setShowApiKey] = useState(false);
             const [testingConnection, setTestingConnection] = useState(false);
 
@@ -173,24 +250,92 @@
 
             // Comunicación HTTP genérica con el LLM seleccionado
             const callAiAPI = async (prompt, systemPrompt = null, isJson = false, jsonSchema = null) => {
+                const provider = localStorage.getItem('cm_provider_v2') || 'google';
                 const key = localStorage.getItem('cm_key_v2') || '';
-                const model = localStorage.getItem('cm_model_v2') || 'gemini-2.5-flash-preview-09-2025';
+                const model = localStorage.getItem('cm_model_v2') || 'gemini-2.5-flash';
 
                 if (!key) {
                     throw new Error("API Key no configurada. Configúrala en la pestaña de Configuración.");
                 }
 
-                let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-                let bodyPayload = {
-                    contents: [{ parts: [{ text: prompt }] }]
-                };
-                if (systemPrompt) {
-                    bodyPayload.systemInstruction = { parts: [{ text: systemPrompt }] };
-                }
-                if (isJson && jsonSchema) {
-                    bodyPayload.generationConfig = {
-                        responseMimeType: "application/json",
-                        responseSchema: jsonSchema
+                let url = "";
+                let headers = { "Content-Type": "application/json" };
+                let bodyPayload = {};
+
+                if (provider === 'google') {
+                    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+                    bodyPayload = {
+                        contents: [{ parts: [{ text: prompt }] }]
+                    };
+                    if (systemPrompt) {
+                        bodyPayload.systemInstruction = { parts: [{ text: systemPrompt }] };
+                    }
+                    if (isJson && jsonSchema) {
+                        bodyPayload.generationConfig = {
+                            responseMimeType: "application/json",
+                            responseSchema: jsonSchema
+                        };
+                    }
+                } else if (provider === 'anthropic') {
+                    url = "[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)";
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-api-key": key,
+                        "anthropic-version": "2023-06-01",
+                        "anthropic-dangerous-direct-browser-access": "true"
+                    };
+                    let customPrompt = prompt;
+                    if (isJson) {
+                        customPrompt += "\nResponde exclusivamente con un JSON válido estructurado como se solicitó. No agregues formatos markdown de bloque.";
+                    }
+                    bodyPayload = {
+                        model: model,
+                        max_tokens: 3500,
+                        messages: [{ role: "user", content: customPrompt }]
+                    };
+                    if (systemPrompt) {
+                        bodyPayload.system = systemPrompt;
+                    }
+                } else if (provider === 'openai') {
+                    url = "[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)";
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${key}`
+                    };
+                    const messages = [];
+                    if (systemPrompt) {
+                        messages.push({ role: "system", content: systemPrompt });
+                    }
+                    let customPrompt = prompt;
+                    if (isJson) {
+                        customPrompt += "\nResponde únicamente con un objeto JSON válido conforme a la estructura solicitada.";
+                    }
+                    messages.push({ role: "user", content: customPrompt });
+                    bodyPayload = {
+                        model: model,
+                        messages: messages
+                    };
+                    if (isJson) {
+                        bodyPayload.response_format = { type: "json_object" };
+                    }
+                } else if (provider === 'openrouter') {
+                    url = "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)";
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${key}`
+                    };
+                    const messages = [];
+                    if (systemPrompt) {
+                        messages.push({ role: "system", content: systemPrompt });
+                    }
+                    let customPrompt = prompt;
+                    if (isJson) {
+                        customPrompt += "\nResponde únicamente con un objeto JSON válido.";
+                    }
+                    messages.push({ role: "user", content: customPrompt });
+                    bodyPayload = {
+                        model: model,
+                        messages: messages
                     };
                 }
 
@@ -199,12 +344,19 @@
                     try {
                         const response = await fetch(url, {
                             method: 'POST',
-                            headers: { "Content-Type": "application/json" },
+                            headers: headers,
                             body: JSON.stringify(bodyPayload)
                         });
                         if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
                         const result = await response.json();
-                        return result.candidates?.[0]?.content?.parts?.[0]?.text;
+                        
+                        if (provider === 'google') {
+                            return result.candidates?.[0]?.content?.parts?.[0]?.text;
+                        } else if (provider === 'anthropic') {
+                            return result.content?.[0]?.text;
+                        } else if (provider === 'openai' || provider === 'openrouter') {
+                            return result.choices?.[0]?.message?.content;
+                        }
                     } catch (err) {
                         if (i === 2) throw err;
                         await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
@@ -233,7 +385,7 @@
                 }
             };
 
-            // --- PARSEADOR CORE DE FACTURAS XML ---
+            // --- PARSEADOR CORE DE FACTURAS XML ALTAMENTE ROBUSTO ---
             const parseSingleXmlText = (xmlText, fileName) => {
                 const parser = new DOMParser();
                 const xmlDoc = parser.parseFromString(xmlText, "text/xml");
@@ -242,48 +394,51 @@
                     throw new Error("Formato XML ilegible");
                 }
 
-                const comprobante = xmlDoc.getElementsByTagName("cfdi:Comprobante")[0] || xmlDoc.getElementsByTagName("Comprobante")[0];
+                const comprobante = getElementByLocalName(xmlDoc, "Comprobante");
                 if (!comprobante) throw new Error("No es un comprobante CFDI válido");
 
-                const emisor = xmlDoc.getElementsByTagName("cfdi:Emisor")[0] || xmlDoc.getElementsByTagName("Emisor")[0];
-                const receptor = xmlDoc.getElementsByTagName("cfdi:Receptor")[0] || xmlDoc.getElementsByTagName("Receptor")[0];
-                const timbre = xmlDoc.getElementsByTagName("tfd:TimbreFiscalDigital")[0] || xmlDoc.getElementsByTagName("TimbreFiscalDigital")[0];
-                const conceptos = Array.from(xmlDoc.getElementsByTagName("cfdi:Concepto") || xmlDoc.getElementsByTagName("Concepto") || []);
+                const emisor = getElementByLocalName(xmlDoc, "Emisor");
+                const receptor = getElementByLocalName(xmlDoc, "Receptor");
+                const timbre = getElementByLocalName(xmlDoc, "TimbreFiscalDigital");
+                const conceptos = getElementsByLocalName(xmlDoc, "Concepto");
 
-                const uuid = timbre ? timbre.getAttribute("UUID") : `LOCAL-${Math.random().toString(36).substring(2,11).toUpperCase()}`;
-                const fecha = comprobante.getAttribute("Fecha") ? comprobante.getAttribute("Fecha").substring(0, 10) : new Date().toISOString().substring(0, 10);
-                const total = parseFloat(comprobante.getAttribute("Total") || 0);
-                const subtotal = parseFloat(comprobante.getAttribute("SubTotal") || (total / 1.16));
+                const uuid = timbre ? getAttrIgnoreCase(timbre, "UUID") : `LOCAL-${Math.random().toString(36).substring(2,11).toUpperCase()}`;
+                const fecha = getAttrIgnoreCase(comprobante, "Fecha") ? getAttrIgnoreCase(comprobante, "Fecha").substring(0, 10) : new Date().toISOString().substring(0, 10);
+                const total = parseFloat(getAttrIgnoreCase(comprobante, "Total") || 0);
+                const subtotal = parseFloat(getAttrIgnoreCase(comprobante, "SubTotal") || (total / 1.16));
                 const iva = total - subtotal;
 
-                const rfcEmisor = emisor ? emisor.getAttribute("Rfc") : "XAXX010101000";
-                const nombreEmisor = emisor ? emisor.getAttribute("Nombre") : "Proveedor Desconocido";
-                const rfcReceptor = receptor ? receptor.getAttribute("Rfc") : "XAXX010101000";
-                const nombreReceptor = receptor ? receptor.getAttribute("Nombre") : "Cliente Desconocido";
+                const rfcEmisor = (getAttrIgnoreCase(emisor, "Rfc") || "XAXX010101000").toUpperCase();
+                const nombreEmisor = getAttrIgnoreCase(emisor, "Nombre") || "Proveedor Desconocido";
+                const rfcReceptor = (getAttrIgnoreCase(receptor, "Rfc") || "XAXX010101000").toUpperCase();
+                const nombreReceptor = getAttrIgnoreCase(receptor, "Nombre") || "Cliente Desconocido";
 
-                // Clasificar según RFC de la cuenta
+                // Tipo de comprobante según SAT (I = Ingreso, E = Egreso, P = Pago, N = Nómina, T = Traslado)
+                const tipoDeComprobante = getAttrIgnoreCase(comprobante, "TipoDeComprobante") || "I";
+
                 let tipo = "Recibido";
-                if (rfcEmisor.toUpperCase() === contribuyenteRfc.toUpperCase()) {
-                    tipo = "Emitido";
-                }
-
-                const conceptoStr = conceptos.map(c => c.getAttribute("Descripcion")).join(", ") || "Concepto general sin descripción";
-                const metodoPago = comprobante.getAttribute("MetodoPago") || "PUE";
-                const formaPago = comprobante.getAttribute("FormaPago") || "03";
-
-                // Detectar si es nómina
-                let isNomina = false;
-                if (conceptoStr.toLowerCase().includes('nómina') || conceptoStr.toLowerCase().includes('sueldo') || xmlDoc.getElementsByTagName("nomina12:Nomina").length > 0) {
-                    isNomina = true;
+                
+                // 1. Revisar si es Nómina (N o presencia de nodo Nómina)
+                const isNominaNode = getElementByLocalName(xmlDoc, "Nomina") !== null;
+                if (tipoDeComprobante.toUpperCase() === 'N' || isNominaNode) {
                     tipo = "Nómina";
                 }
-
-                // Detectar si es un REP
-                let isRep = false;
-                if (xmlDoc.getElementsByTagName("pago20:Pagos").length > 0 || xmlDoc.getElementsByTagName("cfdi:Pagos").length > 0 || metodoPago === 'PPD' || conceptoStr.toLowerCase().includes('complemento de pago')) {
-                    isRep = true;
+                // 2. Revisar si es REP/Pago (P o presencia de nodo Pagos)
+                else if (tipoDeComprobante.toUpperCase() === 'P' || getElementByLocalName(xmlDoc, "Pagos") !== null) {
                     tipo = "Pago";
                 }
+                // 3. Regulares (Ingreso / Egreso) - Clasificar por RFC de la sesión
+                else {
+                    if (rfcEmisor === contribuyenteRfc.toUpperCase()) {
+                        tipo = "Emitido";
+                    } else {
+                        tipo = "Recibido";
+                    }
+                }
+
+                const conceptoStr = conceptos.map(c => getAttrIgnoreCase(c, "Descripcion") || "").filter(Boolean).join(", ") || "Concepto general sin descripción";
+                const metodoPago = getAttrIgnoreCase(comprobante, "MetodoPago") || "PUE";
+                const formaPago = getAttrIgnoreCase(comprobante, "FormaPago") || "03";
 
                 return {
                     uuid,
@@ -300,8 +455,8 @@
                     metodoPago,
                     formaPago,
                     status: 'Vigente',
-                    ...(isNomina && { nominaDetalles: { sueldo: total, status: 'Vigente', aguinaldo: 0.00, vales: 0.00, retencionIsr: 0.00 } }),
-                    ...(isRep && { repDetalles: { uuidRelacionado: 'Relación Automática', saldoInsoluto: 0.0, impPagado: total, impSaldoAnt: total, parcialidad: 1 } })
+                    ...(tipo === 'Nómina' && { nominaDetalles: { sueldo: total, status: 'Vigente', aguinaldo: 0.00, vales: 0.00, retencionIsr: 0.00 } }),
+                    ...(tipo === 'Pago' && { repDetalles: { uuidRelacionado: 'Relación Automática', saldoInsoluto: 0.0, impPagado: total, impSaldoAnt: total, parcialidad: 1 } })
                 };
             };
 
@@ -321,7 +476,7 @@
                             const zipPromises = [];
 
                             zipContent.forEach((relativePath, zipEntry) => {
-                                if (zipEntry.name.endsWith('.xml') && !zipEntry.dir) {
+                                if (zipEntry.name.toLowerCase().endsWith('.xml') && !zipEntry.dir) {
                                     const p = zipEntry.async("string").then(text => {
                                         try {
                                             const parsed = parseSingleXmlText(text, zipEntry.name);
@@ -338,7 +493,7 @@
                             errorsCount++;
                         }
                     } 
-                    else if (file.name.endsWith('.xml')) {
+                    else if (file.name.toLowerCase().endsWith('.xml')) {
                         try {
                             const text = await file.text();
                             const parsed = parseSingleXmlText(text, file.name);
@@ -434,7 +589,7 @@
                 triggerToast(`✅ Cuenta asignada: ${accountCode}`);
             };
 
-            // Cálculos y estadísticas para Dashboard
+            // map de estadísticas
             const dashboardStats = useMemo(() => {
                 const totalMovements = bankMovements.length;
                 const totalMatched = Object.keys(matches).length;
@@ -861,7 +1016,7 @@ Pregunta del contribuyente: "${userText}"`;
                             
                             <div className="flex items-center space-x-4 text-xs font-sans">
                                 <div className="text-right">
-                                    <div className="text-slate-400">RFC Contribuyente Registrado</div>
+                                    <div className="text-slate-400 font-sans">RFC Contribuyente Registrado</div>
                                     <div className="text-sm font-mono font-bold text-emerald-400">{contribuyenteRfc}</div>
                                 </div>
                                 <div className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
@@ -946,7 +1101,7 @@ Pregunta del contribuyente: "${userText}"`;
                                 </div>
 
                                 {/* KPIs */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in font-sans">
                                     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                                         <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider font-sans">Tasa de Conciliación</div>
                                         <div className="text-3xl font-bold text-slate-900 mt-2 flex items-baseline gap-1 font-mono">
@@ -981,7 +1136,7 @@ Pregunta del contribuyente: "${userText}"`;
                                 </div>
 
                                 {/* APARTADO ¿CÓMO AUTOMATIZAR TU CONCILIACIÓN CON CONCILIAMAX? */}
-                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4 font-sans">
                                     <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                                         <div className="bg-emerald-100 text-emerald-800 p-1.5 rounded-lg">
                                             <i data-lucide="help-circle" className="w-5 h-5"></i>
@@ -1056,7 +1211,7 @@ Pregunta del contribuyente: "${userText}"`;
                                 </div>
 
                                 {/* PANEL DE ESTADO DE DATOS DE SESIÓN */}
-                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 font-sans">
                                     <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
                                         <div className="bg-indigo-100 text-indigo-800 p-1.5 rounded-lg">
                                             <i data-lucide="database" className="w-5 h-5"></i>
@@ -1160,7 +1315,7 @@ Pregunta del contribuyente: "${userText}"`;
                                 )}
 
                                 {xmlSubTab === 'listado' && (
-                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 font-sans">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 font-sans font-sans">
                                         {cfdis.length > 0 ? (
                                             <div>
                                                 <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
@@ -1302,15 +1457,15 @@ Pregunta del contribuyente: "${userText}"`;
                                 </div>
 
                                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 overflow-x-auto font-sans">
-                                    <table className="w-full text-left text-xs">
+                                    <table className="w-full text-left text-xs font-sans">
                                         <thead>
                                             <tr className="border-b border-slate-200 text-slate-400 uppercase tracking-wider text-[10px]">
-                                                <th className="py-2">Movimiento de Banco</th>
-                                                <th>Importe</th>
+                                                <th className="py-2 text-left">Movimiento de Banco</th>
+                                                <th className="text-left">Importe</th>
                                                 <th className="text-center">Enlace</th>
-                                                <th>Comprobante SAT</th>
+                                                <th className="text-left font-sans">Comprobante SAT</th>
                                                 <th className="text-right font-sans">Importe SAT</th>
-                                                <th>Sugerencia IA de Cuenta</th>
+                                                <th className="text-left font-sans">Sugerencia IA de Cuenta</th>
                                                 <th className="text-center">Acción</th>
                                             </tr>
                                         </thead>
@@ -1393,7 +1548,7 @@ Pregunta del contribuyente: "${userText}"`;
                                                 })
                                             ) : (
                                                 <tr>
-                                                    <td colSpan={7} className="py-8 text-center text-slate-400 italic font-sans">No hay movimientos bancarios en la sesión.</td>
+                                                    <td colSpan={7} className="py-8 text-center text-slate-400 italic font-sans font-sans">No hay movimientos bancarios en la sesión.</td>
                                                 </tr>
                                             )}
                                         </tbody>
@@ -1409,7 +1564,7 @@ Pregunta del contribuyente: "${userText}"`;
                                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
                                         <div>
                                             <h3 className="font-bold text-lg">Asientos y Pólizas Contables</h3>
-                                            <p className="text-xs text-slate-500">Pólizas de diario para importación directa en tu ERP.</p>
+                                            <p className="text-xs text-slate-500 font-sans">Pólizas de diario para importación directa en tu ERP.</p>
                                         </div>
                                         <div className="flex gap-2">
                                             <button onClick={downloadContpaqiPolizas} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors">Descargar CONTPAQi (.txt)</button>
@@ -1466,8 +1621,8 @@ Pregunta del contribuyente: "${userText}"`;
                                                             <tr key={idx} className="hover:bg-slate-50">
                                                                 <td className="py-2.5 font-bold text-slate-800">{m.cuenta}</td>
                                                                 <td className="font-sans text-slate-600 font-semibold">{m.nombre}</td>
-                                                                <td className="text-right font-bold text-slate-900">{m.cargo > 0 ? `$${m.cargo.toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '$0.00'}</td>
-                                                                <td className="text-right font-bold text-slate-900">{m.abono > 0 ? `$${m.abono.toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '$0.00'}</td>
+                                                                <td className="text-right font-bold text-slate-900">${m.cargo > 0 ? m.cargo.toLocaleString('es-MX', { minimumFractionDigits: 2 }) : '0.00'}</td>
+                                                                <td className="text-right font-bold text-slate-900">${m.abono > 0 ? m.abono.toLocaleString('es-MX', { minimumFractionDigits: 2 }) : '0.00'}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -1484,7 +1639,7 @@ Pregunta del contribuyente: "${userText}"`;
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-sans">
                                 <div className="space-y-6">
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                        <h3 className="font-bold mb-2">Importar Catálogo contable</h3>
+                                        <h3 className="font-bold mb-2 font-sans">Importar Catálogo contable</h3>
                                         <p className="text-xs text-slate-500 mb-4">Sube la estructura de tus cuentas en CSV para personalizar tus pólizas.</p>
                                         <div className="border border-dashed border-slate-300 rounded-lg p-5 bg-slate-50 text-center relative cursor-pointer hover:border-emerald-500 transition-colors">
                                             <input type="file" accept=".csv" onChange={handleCatalogUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
@@ -1494,18 +1649,18 @@ Pregunta del contribuyente: "${userText}"`;
                                     </div>
 
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-fit">
-                                        <h3 className="font-bold mb-4">Añadir Cuenta Contable</h3>
-                                        <form onSubmit={handleAddAccount} className="space-y-4 text-xs">
+                                        <h3 className="font-bold mb-4 font-sans">Añadir Cuenta Contable</h3>
+                                        <form onSubmit={handleAddAccount} className="space-y-4 text-xs font-sans">
                                             <div>
                                                 <label className="block text-slate-500 font-bold mb-1">Código Contable</label>
                                                 <input type="text" name="codigo" className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 font-mono outline-none" placeholder="102-01-002" required />
                                             </div>
                                             <div>
-                                                <label className="block text-slate-500 font-bold mb-1">Nombre de la Cuenta</label>
+                                                <label className="block text-slate-500 font-bold mb-1 font-sans">Nombre de la Cuenta</label>
                                                 <input type="text" name="nombre" className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold" placeholder="Bancos - Santander" required />
                                             </div>
                                             <div>
-                                                <label className="block text-slate-500 font-bold mb-1">Tipo</label>
+                                                <label className="block text-slate-500 font-bold mb-1 font-sans">Tipo</label>
                                                 <select name="tipo" className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold">
                                                     <option value="Activo">Activo</option>
                                                     <option value="Pasivo">Pasivo</option>
@@ -1518,14 +1673,14 @@ Pregunta del contribuyente: "${userText}"`;
                                     </div>
                                 </div>
 
-                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col h-[650px]">
+                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col h-[650px] font-sans">
                                     <div className="mb-4 flex items-center justify-between">
                                         <h3 className="font-bold">Mapeo de Cuentas Contables</h3>
                                         <input type="text" className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none w-64" placeholder="Buscar..." value={accountSearchQuery} onChange={(e) => setAccountSearchQuery(e.target.value)} />
                                     </div>
                                     <div className="flex-1 overflow-y-auto border border-slate-100 rounded-lg text-xs">
                                         <table className="w-full text-left">
-                                            <thead className="bg-slate-50 sticky top-0 text-slate-500 font-bold">
+                                            <thead className="bg-slate-50 sticky top-0 text-slate-500 font-bold font-sans">
                                                 <tr className="border-b border-slate-200">
                                                     <th className="py-2.5 px-3">Código</th>
                                                     <th className="px-3">Tipo</th>
@@ -1559,14 +1714,14 @@ Pregunta del contribuyente: "${userText}"`;
 
                         {/* TAB: CONSULTOR IA */}
                         {activeTab === 'consultor-ia' && (
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                                <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col h-[650px] font-sans">
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 font-sans">
+                                <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col h-[650px]">
                                     <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4 shrink-0">
                                         <div>
-                                            <h3 className="font-bold flex items-center gap-1.5">
+                                            <h3 className="font-bold flex items-center gap-1.5 font-sans">
                                                 <span>✨</span> Auditoría de Discrepancia & Diagnóstico SAT
                                             </h3>
-                                            <p className="text-xs text-slate-500">Detecta omisiones de facturas y discrepancias en tu flujo financiero.</p>
+                                            <p className="text-xs text-slate-500 font-sans">Detecta omisiones de facturas y discrepancias en tu flujo financiero.</p>
                                         </div>
                                         <button onClick={handleGenerateFiscalReport} disabled={loadingAiReport} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors">
                                             {loadingAiReport ? 'Generando...' : 'Generar Auditoría'}
@@ -1579,13 +1734,13 @@ Pregunta del contribuyente: "${userText}"`;
                                                 <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-lg font-bold mb-4 flex items-center gap-1.5">
                                                     <i data-lucide="check-circle" className="w-4 h-4 text-emerald-600 font-sans"></i> Reporte contable estructurado por Inteligencia Artificial.
                                                 </div>
-                                                <div className="text-sm leading-relaxed whitespace-pre-line text-slate-700">{aiReport}</div>
+                                                <div className="text-sm leading-relaxed whitespace-pre-line text-slate-700 font-sans">{aiReport}</div>
                                             </div>
                                         ) : (
-                                            <div className="flex flex-col items-center justify-center h-full text-center text-slate-400">
+                                            <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 font-sans">
                                                 <i data-lucide="file-text" className="w-12 h-12 mb-2 text-slate-300"></i>
-                                                <h4 className="font-bold text-slate-700 text-sm">Ningún reporte activo</h4>
-                                                <p className="text-xs max-w-xs mt-1">Presiona "Generar Auditoría" para evaluar la facturación del SAT contra tus estados de cuenta bancarios.</p>
+                                                <h4 className="font-bold text-slate-700 text-sm font-sans">Ningún reporte activo</h4>
+                                                <p className="text-xs max-w-xs mt-1 font-sans">Presiona "Generar Auditoría" para evaluar la facturación del SAT contra tus estados de cuenta bancarios.</p>
                                             </div>
                                         )}
                                     </div>
@@ -1607,7 +1762,7 @@ Pregunta del contribuyente: "${userText}"`;
                                             </div>
                                         ))}
                                         {loadingChat && (
-                                            <div className="text-xs text-slate-400 animate-pulse flex items-center gap-1">
+                                            <div className="text-xs text-slate-400 animate-pulse flex items-center gap-1 font-sans">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce"></span>
                                                 Escribiendo respuesta...
                                             </div>
@@ -1673,8 +1828,20 @@ Pregunta del contribuyente: "${userText}"`;
                                     <form onSubmit={handleSaveConfig} className="space-y-4 text-xs font-sans">
                                         <div>
                                             <label className="block text-slate-500 font-bold mb-1.5 uppercase">Proveedor LLM</label>
-                                            <select value={apiProvider} onChange={(e) => setApiProvider(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold">
+                                            <select 
+                                                value={apiProvider} 
+                                                onChange={(e) => {
+                                                    const prov = e.target.value;
+                                                    setApiProvider(prov);
+                                                    const defaultModel = PROVIDER_MODELS[prov][0].value;
+                                                    setApiModel(defaultModel);
+                                                }} 
+                                                className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold"
+                                            >
                                                 <option value="google">Google AI Studio (Gemini)</option>
+                                                <option value="anthropic">Anthropic Console (Claude)</option>
+                                                <option value="openai">OpenAI (GPT)</option>
+                                                <option value="openrouter">OpenRouter (Modelos Diversos)</option>
                                             </select>
                                         </div>
 
@@ -1684,7 +1851,11 @@ Pregunta del contribuyente: "${userText}"`;
                                                 <input 
                                                     type={showApiKey ? "text" : "password"} 
                                                     className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 pl-3 pr-10 font-mono outline-none" 
-                                                    placeholder="AIzaSy..." 
+                                                    placeholder={
+                                                        apiProvider === 'google' ? "AIzaSy..." :
+                                                        apiProvider === 'anthropic' ? "sk-ant-..." :
+                                                        apiProvider === 'openai' ? "sk-proj-..." : "sk-or-..."
+                                                    } 
                                                     value={apiKey} 
                                                     onChange={(e) => setApiKey(e.target.value)} 
                                                     required 
@@ -1697,14 +1868,20 @@ Pregunta del contribuyente: "${userText}"`;
 
                                         <div>
                                             <label className="block text-slate-500 font-bold mb-1.5 uppercase">Modelo de IA Seleccionado</label>
-                                            <select value={apiModel} onChange={(e) => setApiModel(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold">
-                                                <option value="gemini-2.5-flash-preview-09-2025">gemini-2.5-flash-preview-09-2025 (Recomendado)</option>
+                                            <select 
+                                                value={apiModel} 
+                                                onChange={(e) => setApiModel(e.target.value)} 
+                                                className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold"
+                                            >
+                                                {(PROVIDER_MODELS[apiProvider] || PROVIDER_MODELS.google).map(model => (
+                                                    <option key={model.value} value={model.value}>{model.label}</option>
+                                                ))}
                                             </select>
                                         </div>
 
                                         <div className="flex gap-2 pt-4 border-t border-slate-100 flex-wrap">
                                             <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-2 px-5 rounded-lg">Guardar Configuración</button>
-                                            <button type="button" onClick={handleTestConnection} disabled={testingConnection} className="border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-2 px-5 rounded-lg">
+                                            <button type="button" onClick={handleTestConnection} disabled={testingConnection} className="border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-2 px-5 rounded-lg font-sans">
                                                 {testingConnection ? 'Probando...' : 'Probar Conexión'}
                                             </button>
                                         </div>
@@ -1747,7 +1924,7 @@ Pregunta del contribuyente: "${userText}"`;
                                     </div>
                                 </div>
                                 <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
-                                    <button onClick={() => setSelectedCfdi(null)} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-4 rounded text-xs transition-all font-sans">
+                                    <button onClick={() => setSelectedCfdi(null)} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-4 rounded text-xs transition-all font-sans font-sans">
                                         Cerrar Vista
                                     </button>
                                 </div>

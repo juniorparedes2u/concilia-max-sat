@@ -1,0 +1,1574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConciliaMax - Conciliador Bancario & SAT Inteligente con IA</title>
+    <!-- Tailwind CSS para diseño y estilos fluidos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons para una iconografía limpia y profesional -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f8fafc;
+        }
+        
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="text-slate-900 antialiased min-h-screen flex flex-col">
+    <div id="root" class="flex-1 flex flex-col"></div>
+
+    <!-- Scripts Esenciales: React 18, ReactDOM y Babel compiler -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Componentes de Aplicación React con JSX -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // Base de datos de Demostración (Mock SAT y Estado de Cuenta) cargada bajo demanda
+        const DEMO_CFDI_DATA = [
+            { uuid: 'D6B19A31-4F20-4F8A-8BE5-715FA4AA9011', fecha: '2026-05-10', rfcEmisor: 'CFE370814JC0', nombreEmisor: 'Comisión Federal de Electricidad', rfcReceptor: 'GAM920815S32', nombreReceptor: 'Corporativo Arrendador de México SA', total: 4640.00, subtotal: 4000.00, iva: 640.00, tipo: 'Recibido', concepto: 'Servicio Eléctrico Media Tensión Mayo', metodoPago: 'PUE', formaPago: '03', status: 'Vigente' },
+            { uuid: '8F94D5E0-12A5-4D1E-BD42-59ACF906A922', fecha: '2026-05-12', rfcEmisor: 'TEL840315HA9', nombreEmisor: 'Teléfonos de México SAB de CV', rfcReceptor: 'GAM920815S32', nombreReceptor: 'Corporativo Arrendador de México SA', total: 1160.00, subtotal: 1000.00, iva: 160.00, tipo: 'Recibido', concepto: 'Enlace Dedicado Internet Simétrico 100 Mbps', metodoPago: 'PUE', formaPago: '03', status: 'Vigente' },
+            { uuid: 'A0C28A25-F0E8-48F5-86A5-927A7B9B4115', fecha: '2026-05-14', rfcEmisor: 'GAM920815S32', nombreEmisor: 'Corporativo Arrendador de México SA', rfcReceptor: 'CLI950312F91', nombreReceptor: 'Comercializadora de Occidente SA', total: 58000.00, subtotal: 50000.00, iva: 8000.00, tipo: 'Emitido', concepto: 'Arrendamiento Mensual Bodega Logística Sector 4', metodoPago: 'PUE', formaPago: '03', status: 'Vigente' },
+            { uuid: '3C99EA31-6712-4211-A521-B900C0AA6624', fecha: '2026-05-15', rfcEmisor: 'OXX8605231N4', nombreEmisor: 'Cadena Comercial OXXO SA de CV', rfcReceptor: 'GAM920815S32', nombreReceptor: 'Corporativo Arrendador de México SA', total: 348.00, subtotal: 300.00, iva: 48.00, tipo: 'Recibido', concepto: 'Consumo de Viáticos Alimentos Reunión de Planeación', metodoPago: 'PUE', formaPago: '04', status: 'Vigente' },
+            { uuid: '7A88FA12-C9A1-4BCE-AA90-7D8E9F10E291', fecha: '2026-05-15', rfcEmisor: 'SGP1102049E1', nombreEmisor: 'Servicios de Gasolinera del Pacífico SA', rfcReceptor: 'GAM920815S32', nombreReceptor: 'Corporativo Arrendador de México SA', total: 2500.00, subtotal: 2162.00, iva: 338.00, tipo: 'Recibido', concepto: 'Combustible Magna Flotilla Camionetas de Entrega', metodoPago: 'PUE', formaPago: '28', status: 'Vigente' },
+            { uuid: 'E099A044-03B2-43E2-8119-92EEFF113C99', fecha: '2026-05-18', rfcEmisor: 'GAM920815S32', nombreEmisor: 'Corporativo Arrendador de México SA', rfcReceptor: 'CLI950312F91', nombreReceptor: 'Comercializadora de Occidente SA', total: 17400.00, subtotal: 15000.00, iva: 2400.00, tipo: 'Emitido', concepto: 'Servicios Profesionales de Asesoría Operativa Mayo', metodoPago: 'PUE', formaPago: '03', status: 'Vigente' }
+        ];
+
+        const DEMO_BANK_MOVEMENTS = [
+            { id: 1, fecha: '2026-05-10', referencia: 'SPEI RECIBIDO CFE', descripcion: 'PAGO CFDI SERV ENERGIA CFE370814JC0', cargo: 4640.00, abono: 0, tipo: 'Egreso' },
+            { id: 2, fecha: '2026-05-12', referencia: 'DOMICILIACION TELMEX', descripcion: 'ENLACE DEDICADO TEL840315HA9', cargo: 1160.00, abono: 0, tipo: 'Egreso' },
+            { id: 3, fecha: '2026-05-14', referencia: 'SPEI RECIBIDO COCO', descripcion: 'RENTA BODEGA MAYO CLI950312F91', cargo: 0, abono: 58000.00, tipo: 'Ingreso' },
+            { id: 4, fecha: '2026-05-15', referencia: 'T. DEBITO OXXO REUNION', descripcion: 'COMPRA ALIMENTOS REUNION TRABAJO', cargo: 348.00, abono: 0, tipo: 'Egreso' },
+            { id: 5, fecha: '2026-05-15', referencia: 'DEBITO ESTACION SERVICIO', descripcion: 'COMBUSTIBLE FLOTILLA SGP1102049E1', cargo: 2500.00, abono: 0, tipo: 'Egreso' },
+            { id: 6, fecha: '2026-05-18', referencia: 'SPEI EMITIDO ASESORIA', descripcion: 'COBRO HONORARIOS MAYO PROYECTO', cargo: 0, abono: 17400.00, tipo: 'Ingreso' },
+            { id: 7, fecha: '2026-05-19', referencia: 'COMISION BANCARIA ANUAL', descripcion: 'COMISION POR MANTENIMIENTO DE SALDO', cargo: 450.00, abono: 0, tipo: 'Egreso' }
+        ];
+
+        const DEFAULT_ACCOUNTS = [
+            { codigo: '102-01-001', nombre: 'Bancos Nacionales - BBVA Bancomer', tipo: 'Activo' },
+            { codigo: '105-01-001', nombre: 'Clientes Nacionales - Comercializadora de Occidente', tipo: 'Activo' },
+            { codigo: '118-01-001', nombre: 'IVA Acreditable Pagado (Flujo)', tipo: 'Activo' },
+            { codigo: '119-01-001', nombre: 'IVA Pendiente de Acreditar', tipo: 'Activo' },
+            { codigo: '201-01-001', nombre: 'Proveedores Nacionales - CFE', tipo: 'Pasivo' },
+            { codigo: '201-01-002', nombre: 'Proveedores Nacionales - Telmex', tipo: 'Pasivo' },
+            { codigo: '213-01-001', nombre: 'IVA Trasladado Cobrado (Flujo)', tipo: 'Pasivo' },
+            { codigo: '213-02-001', nombre: 'IVA Pendiente de Trasladar', tipo: 'Pasivo' },
+            { codigo: '401-01-001', nombre: 'Ingresos por Arrendamiento de Bodegas', tipo: 'Ingreso' },
+            { codigo: '401-01-002', nombre: 'Honorarios por Servicios Profesionales', tipo: 'Ingreso' },
+            { codigo: '601-01-001', nombre: 'Gastos de Energía Eléctrica', tipo: 'Egreso' },
+            { codigo: '601-01-002', nombre: 'Gastos de Internet y Enlaces', tipo: 'Egreso' },
+            { codigo: '601-01-003', nombre: 'Gastos de Viaje y Alimentos', tipo: 'Egreso' },
+            { codigo: '601-01-004', nombre: 'Combustibles y Lubricantes', tipo: 'Egreso' },
+            { codigo: '601-01-005', nombre: 'Servicios Financieros y Comisiones Bancarias', tipo: 'Egreso' }
+        ];
+
+        // Parser seguro para bloques JSON retornados por las IA
+        const safeParseJSON = (text) => {
+            if (!text) return null;
+            let clean = text.trim();
+            // Remover envoltorios markdown habituales
+            if (clean.startsWith('```json')) clean = clean.substring(7);
+            else if (clean.startsWith('```')) clean = clean.substring(3);
+            if (clean.endsWith('```')) clean = clean.substring(0, clean.length - 3);
+            return JSON.parse(clean.trim());
+        };
+
+        function App() {
+            // Navegación de Pestañas
+            const [activeTab, setActiveTab] = useState('dashboard');
+            
+            // Estados del Contribuyente & SAT
+            const [satConnected, setSatConnected] = useState(false);
+            const [satConfig, setSatConfig] = useState({ rfc: 'GAM920815S32', password: '', f_inicio: '2026-05-01', f_fin: '2026-05-31' });
+            const [loadingSat, setLoadingSat] = useState(false);
+            const [satProgress, setSatProgress] = useState(0);
+
+            // Bases de datos locales reactivas (Inicializan vacías para despliegue en producción limpia)
+            const [cfdis, setCfdis] = useState([]);
+            const [bankMovements, setBankMovements] = useState([]);
+            const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
+            const [matches, setMatches] = useState({});
+            const [selectedCfdi, setSelectedCfdi] = useState(null);
+
+            // Filtros de navegación y visualización
+            const [cfdiTypeFilter, setCfdiTypeFilter] = useState('Todos');
+            const [bankMatchedFilter, setBankMatchedFilter] = useState('Todos');
+            const [accountSearchQuery, setAccountSearchQuery] = useState('');
+
+            // Configuración de Pólizas
+            const [startingFolio, setStartingFolio] = useState(1);
+            const [policyTypeMode, setPolicyTypeMode] = useState('auto'); // 'auto', 'diario', 'egreso', 'ingreso'
+            const [bankAccountCode, setBankAccountCode] = useState('102-01-001');
+
+            // --- ESTADOS DE CONFIGURACIÓN DE API LLM INDEPENDIENTE ---
+            const [apiProvider, setApiProvider] = useState(() => localStorage.getItem('cm_provider') || 'google');
+            const [apiKey, setApiKey] = useState(() => localStorage.getItem('cm_key') || '');
+            const [apiModel, setApiModel] = useState(() => {
+                const prov = localStorage.getItem('cm_provider') || 'google';
+                if (prov === 'google') return localStorage.getItem('cm_model') || 'gemini-2.5-flash';
+                if (prov === 'anthropic') return localStorage.getItem('cm_model') || 'claude-3-5-sonnet-latest';
+                return localStorage.getItem('cm_model') || 'google/gemini-2.5-flash';
+            });
+            const [showApiKey, setShowApiKey] = useState(false);
+            const [testingConnection, setTestingConnection] = useState(false);
+
+            // --- ESTADOS INTEGRACIÓN IA DE CONCILIACIÓN ---
+            const [aiSuggestions, setAiSuggestions] = useState({}); 
+            const [loadingAiSug, setLoadingAiSug] = useState({}); 
+            const [aiReport, setAiReport] = useState("");
+            const [loadingAiReport, setLoadingAiReport] = useState(false);
+
+            // Chatbot de Consultas Fiscales
+            const [chatMessages, setChatMessages] = useState([
+                { sender: 'ia', text: '¡Hola! Soy tu Consultor Fiscal IA. Puedo ayudarte a clasificar transacciones difíciles, analizar discrepancias contra el SAT, evaluar deducibilidad de egresos sin XML, o resolver dudas tributarias de este periodo. ¿En qué puedo apoyarte hoy?' }
+            ]);
+            const [chatInput, setChatInput] = useState("");
+            const [loadingChat, setLoadingChat] = useState(false);
+
+            // Notificaciones de IU sin recurrir a alert()
+            const [toast, setToast] = useState(null);
+            const triggerToast = (msg) => {
+                setToast(msg);
+                setTimeout(() => setToast(null), 4000);
+            };
+
+            // Asegura el redibujado consistente de iconos Lucide tras cambios de estado
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [activeTab, cfdis, bankMovements, matches, selectedCfdi, aiSuggestions, loadingAiSug, aiReport, chatMessages, loadingAiReport, apiProvider, apiKey, showApiKey, testingConnection]);
+
+            // Cargar por defecto modelos óptimos al cambiar el proveedor de LLM
+            const handleProviderChange = (provider) => {
+                setApiProvider(provider);
+                if (provider === 'google') setApiModel('gemini-2.5-flash');
+                else if (provider === 'anthropic') setApiModel('claude-3-5-sonnet-latest');
+                else if (provider === 'openrouter') setApiModel('google/gemini-2.5-flash');
+            };
+
+            // Guardar configuración en LocalStorage del navegador del cliente
+            const handleSaveConfig = (e) => {
+                e.preventDefault();
+                localStorage.setItem('cm_provider', apiProvider);
+                localStorage.setItem('cm_key', apiKey);
+                localStorage.setItem('cm_model', apiModel);
+                triggerToast('⚙️ Configuración de API guardada localmente de manera exitosa.');
+            };
+
+            // Función unificada y adaptativa de comunicación HTTP con las API de LLM
+            const callAiAPI = async (prompt, systemPrompt = null, isJson = false, jsonSchema = null) => {
+                const provider = localStorage.getItem('cm_provider') || 'google';
+                const key = localStorage.getItem('cm_key') || '';
+                const model = localStorage.getItem('cm_model') || 'gemini-2.5-flash';
+
+                if (!key) {
+                    throw new Error("API Key no configurada. Por favor accede a la pestaña de Configuración.");
+                }
+
+                let url = "";
+                let headers = { "Content-Type": "application/json" };
+                let bodyPayload = {};
+
+                if (provider === 'google') {
+                    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+                    bodyPayload = {
+                        contents: [{ parts: [{ text: prompt }] }]
+                    };
+                    if (systemPrompt) {
+                        bodyPayload.systemInstruction = { parts: [{ text: systemPrompt }] };
+                    }
+                    if (isJson && jsonSchema) {
+                        bodyPayload.generationConfig = {
+                            responseMimeType: "application/json",
+                            responseSchema: jsonSchema
+                        };
+                    }
+                } else if (provider === 'anthropic') {
+                    url = "[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)";
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-api-key": key,
+                        "anthropic-version": "2023-06-01",
+                        "anthropic-dangerous-direct-browser-access": "true"
+                    };
+                    let customPrompt = prompt;
+                    if (isJson) {
+                        customPrompt += "\nResponde exclusivamente con un JSON válido estructurado como se solicitó. No agregues formatos markdown de bloque.";
+                    }
+                    bodyPayload = {
+                        model: model,
+                        max_tokens: 3500,
+                        messages: [{ role: "user", content: customPrompt }]
+                    };
+                    if (systemPrompt) {
+                        bodyPayload.system = systemPrompt;
+                    }
+                } else if (provider === 'openrouter') {
+                    url = "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)";
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${key}`
+                    };
+                    const messages = [];
+                    if (systemPrompt) {
+                        messages.push({ role: "system", content: systemPrompt });
+                    }
+                    let customPrompt = prompt;
+                    if (isJson) {
+                        customPrompt += "\nResponde únicamente con un objeto JSON válido.";
+                    }
+                    messages.push({ role: "user", content: customPrompt });
+                    bodyPayload = {
+                        model: model,
+                        messages: messages
+                    };
+                }
+
+                // Retry policy de 5 intentos con retardo exponencial
+                const retryDelays = [1000, 2000, 4000, 8000, 16000];
+                for (let i = 0; i < 5; i++) {
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: headers,
+                            body: JSON.stringify(bodyPayload)
+                        });
+                        
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error(`Error en API: ${response.status} - ${errorText}`);
+                        }
+
+                        const result = await response.json();
+                        
+                        if (provider === 'google') {
+                            return result.candidates?.[0]?.content?.parts?.[0]?.text;
+                        } else if (provider === 'anthropic') {
+                            return result.content?.[0]?.text;
+                        } else if (provider === 'openrouter') {
+                            return result.choices?.[0]?.message?.content;
+                        }
+                    } catch (err) {
+                        if (i === 4) throw err;
+                        await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
+                    }
+                }
+            };
+
+            // Test de comunicación simple para comprobar API Key
+            const handleTestConnection = async () => {
+                if (!apiKey) {
+                    triggerToast('Introduce primero una API Key para validar el canal.');
+                    return;
+                }
+                setTestingConnection(true);
+                try {
+                    const res = await callAiAPI("Responde únicamente 'CONECTADO' si recibes esto correctamente.", "Asistente de diagnóstico de sistemas contables.");
+                    if (res && res.toUpperCase().includes('CONECTADO')) {
+                        triggerToast('✅ Conexión establecida con éxito con el proveedor de IA.');
+                    } else {
+                        triggerToast('⚠️ Se obtuvo respuesta, pero no contiene el código esperado: ' + res);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    triggerToast('❌ Error de conexión: ' + err.message);
+                } finally {
+                    setTestingConnection(false);
+                }
+            };
+
+            // Cargar datos simulados de manera express
+            const handleLoadDemoData = () => {
+                setCfdis(DEMO_CFDI_DATA);
+                setBankMovements(DEMO_BANK_MOVEMENTS);
+                setMatches({});
+                triggerToast('✨ Datos de demostración (XMLs SAT y Banco) cargados con éxito para evaluación rápida.');
+            };
+
+            // Simulación descarga SAT
+            const handleConnectSat = (e) => {
+                e.preventDefault();
+                setLoadingSat(true);
+                setSatProgress(10);
+                
+                const interval = setInterval(() => {
+                    setSatProgress(prev => {
+                        if (prev >= 100) {
+                            clearInterval(interval);
+                            setTimeout(() => {
+                                setLoadingSat(false);
+                                setSatConnected(true);
+                                setCfdis(DEMO_CFDI_DATA);
+                                triggerToast('✅ CFDIs descargados de los servidores del SAT.');
+                            }, 300);
+                            return 100;
+                        }
+                        return prev + 30;
+                    });
+                }, 250);
+            };
+
+            // Carga manual / simulador de archivos Bancarios
+            const handleBankUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setBankMovements(DEMO_BANK_MOVEMENTS);
+                triggerToast('📁 Movimientos del estado de cuenta bancario importados de forma local.');
+            };
+
+            // Carga masiva de catálogo de cuentas
+            const handleCatalogUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setAccounts(DEFAULT_ACCOUNTS);
+                triggerToast('📁 Catálogo de cuentas importado y mapeado de manera estándar.');
+            };
+
+            // Algoritmo local de conciliación inteligente
+            const triggerSmartMatch = () => {
+                if (bankMovements.length === 0 || cfdis.length === 0) {
+                    triggerToast('Por favor carga los movimientos bancarios y los XML del SAT para iniciar.');
+                    return;
+                }
+                const newMatches = { ...matches };
+                let matchCount = 0;
+
+                bankMovements.forEach(movement => {
+                    if (newMatches[movement.id]) return;
+                    const amount = movement.cargo > 0 ? movement.cargo : movement.abono;
+                    const type = movement.cargo > 0 ? 'Recibido' : 'Emitido';
+
+                    const potentialXml = cfdis.find(cfdi => {
+                        const sameType = cfdi.tipo === type;
+                        const sameAmount = Math.abs(cfdi.total - amount) < 0.05;
+                        const alreadyAssigned = Object.values(newMatches).includes(cfdi.uuid);
+                        
+                        if (sameType && sameAmount && !alreadyAssigned) {
+                            const daysDiff = Math.abs((new Date(cfdi.fecha) - new Date(movement.fecha)) / (1000 * 60 * 60 * 24));
+                            const emisorMatch = movement.descripcion.includes(cfdi.rfcEmisor) || movement.referencia.includes(cfdi.rfcEmisor);
+                            const receptorMatch = movement.descripcion.includes(cfdi.rfcReceptor) || movement.referencia.includes(cfdi.rfcReceptor);
+                            
+                            return (emisorMatch || receptorMatch || daysDiff <= 5);
+                        }
+                        return false;
+                    });
+
+                    if (potentialXml) {
+                        newMatches[movement.id] = potentialXml.uuid;
+                        matchCount++;
+                    }
+                });
+
+                setMatches(newMatches);
+                triggerToast(`✅ Conciliación inteligente completada: se enlazaron ${matchCount} transacciones.`);
+            };
+
+            const linkManualMatch = (movementId, uuid) => {
+                setMatches(prev => ({ ...prev, [movementId]: uuid }));
+                triggerToast('Vínculo registrado de manera exitosa.');
+            };
+
+            const unlinkMatch = (movementId) => {
+                const copy = { ...matches };
+                delete copy[movementId];
+                setMatches(copy);
+                triggerToast('Vinculación removida.');
+            };
+
+            // Cálculos y estadísticas para Dashboard
+            const dashboardStats = useMemo(() => {
+                const totalMovements = bankMovements.length;
+                const totalMatched = Object.keys(matches).length;
+                const conciliationRate = totalMovements > 0 ? Math.round((totalMatched / totalMovements) * 100) : 0;
+                const totalBancosIngreso = bankMovements.reduce((sum, item) => sum + (item.abono || 0), 0);
+                const totalBancosEgreso = bankMovements.reduce((sum, item) => sum + (item.cargo || 0), 0);
+                const totalCfdisEmitidos = cfdis.filter(c => c.tipo === 'Emitido').reduce((sum, item) => sum + item.total, 0);
+                const totalCfdisRecibidos = cfdis.filter(c => c.tipo === 'Recibido').reduce((sum, item) => sum + item.total, 0);
+
+                return {
+                    totalMovements,
+                    totalMatched,
+                    conciliationRate,
+                    totalBancosIngreso,
+                    totalBancosEgreso,
+                    totalCfdisEmitidos,
+                    totalCfdisRecibidos
+                };
+            }, [bankMovements, cfdis, matches]);
+
+            // Auxiliar para ubicar códigos de cuenta contable por palabras clave
+            const resolveAccountByKeywords = (tipo, keywords, fallback) => {
+                const found = accounts.find(a => 
+                    a.tipo === tipo && 
+                    keywords.some(kw => a.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(kw))
+                );
+                return found ? found.codigo : fallback;
+            };
+
+            // Generador reactivo de pólizas
+            const generatedPolizas = useMemo(() => {
+                const polizas = [];
+                let polizaCounter = { 
+                    'Ingreso': parseInt(startingFolio) || 1, 
+                    'Egreso': parseInt(startingFolio) || 1, 
+                    'Diario': parseInt(startingFolio) || 1 
+                };
+
+                const cuentaIvaAcreditable = resolveAccountByKeywords('Activo', ['iva acreditable', 'iva pagado', 'iva acred'], '118-01-001');
+                const cuentaIvaTrasladado = resolveAccountByKeywords('Pasivo', ['iva trasladado', 'iva cobrado', 'iva tras'], '213-01-001');
+
+                bankMovements.forEach((mov) => {
+                    const matchedUuid = matches[mov.id];
+                    const cfdi = matchedUuid ? cfdis.find(c => c.uuid === matchedUuid) : null;
+                    const amount = mov.cargo > 0 ? mov.cargo : mov.abono;
+                    
+                    let tipoPoliza = 'Diario';
+                    if (policyTypeMode === 'auto') {
+                        tipoPoliza = mov.abono > 0 ? 'Ingreso' : 'Egreso';
+                    } else {
+                        tipoPoliza = policyTypeMode.charAt(0).toUpperCase() + policyTypeMode.slice(1);
+                    }
+                    
+                    const conceptoPoliza = cfdi 
+                        ? `Pago Factura ${cfdi.uuid.substring(0,8)} - ${cfdi.tipo === 'Recibido' ? cfdi.nombreEmisor : cfdi.nombreReceptor}`
+                        : `Mov: ${mov.referencia} ${mov.descripcion}`;
+
+                    const fechaPoliza = mov.fecha;
+                    const numPoliza = polizaCounter[tipoPoliza]++;
+                    const entries = [];
+
+                    if (mov.cargo > 0) {
+                        let cuentaCargo = '601-01-001'; 
+                        let nombreCuentaCargo = 'Gastos Generales / Prov. por Asignar';
+
+                        if (cfdi) {
+                            if (cfdi.rfcEmisor === 'CFE370814JC0') { 
+                                cuentaCargo = resolveAccountByKeywords('Egreso', ['energia', 'electricidad', 'cfe', 'luz'], '601-01-001');
+                            } else if (cfdi.rfcEmisor === 'TEL840315HA9') { 
+                                cuentaCargo = resolveAccountByKeywords('Egreso', ['telecom', 'telefono', 'telmex', 'internet'], '601-01-002');
+                            } else if (cfdi.rfcEmisor === 'SGP1102049E1') { 
+                                cuentaCargo = resolveAccountByKeywords('Egreso', ['combustible', 'gasolina', 'magna'], '601-01-004');
+                            } else if (cfdi.rfcEmisor === 'OXX8605231N4') { 
+                                cuentaCargo = resolveAccountByKeywords('Egreso', ['viaje', 'representacion', 'viaticos'], '601-01-003');
+                            } else if (cfdi.rfcEmisor === 'PAP901010FE2') {
+                                cuentaCargo = resolveAccountByKeywords('Egreso', ['oficina', 'papeleria', 'consumibles'], '601-01-005');
+                            }
+                        }
+
+                        nombreCuentaCargo = accounts.find(a => a.codigo === cuentaCargo)?.nombre || nombreCuentaCargo;
+                        const subtotal = cfdi ? cfdi.subtotal : (amount / 1.16);
+                        const iva = cfdi ? cfdi.iva : (amount - subtotal);
+
+                        entries.push({ cuenta: cuentaCargo, nombre: nombreCuentaCargo, cargo: subtotal, abono: 0, rfc: cfdi ? cfdi.rfcEmisor : '' });
+                        entries.push({ cuenta: cuentaIvaAcreditable, nombre: accounts.find(a => a.codigo === cuentaIvaAcreditable)?.nombre || 'IVA Acreditable Pagado', cargo: iva, abono: 0, rfc: cfdi ? cfdi.rfcEmisor : '' });
+                        entries.push({ cuenta: bankAccountCode, nombre: accounts.find(a => a.codigo === bankAccountCode)?.nombre || 'Bancos Nacionales', cargo: 0, abono: amount, rfc: '' });
+                    } else {
+                        let cuentaAbono = '401-01-001'; 
+                        let nombreCuentaAbono = 'Ingresos por Arrendamiento de Bodegas';
+
+                        if (cfdi) {
+                            if (cfdi.rfcEmisor === 'GAM920815S32' && cfdi.concepto.includes('Asesoría')) {
+                                cuentaAbono = resolveAccountByKeywords('Ingreso', ['servicio', 'auditoria', 'profesional', 'asesoria'], '401-01-002');
+                            }
+                        }
+                        
+                        nombreCuentaAbono = accounts.find(a => a.codigo === cuentaAbono)?.nombre || nombreCuentaAbono;
+                        const subtotal = cfdi ? cfdi.subtotal : (amount / 1.16);
+                        const iva = cfdi ? cfdi.iva : (amount - subtotal);
+
+                        entries.push({ cuenta: bankAccountCode, nombre: accounts.find(a => a.codigo === bankAccountCode)?.nombre || 'Bancos Nacionales', cargo: amount, abono: 0, rfc: '' });
+                        entries.push({ cuenta: cuentaAbono, nombre: nombreCuentaAbono, cargo: 0, abono: subtotal, rfc: cfdi ? cfdi.rfcReceptor : '' });
+                        entries.push({ cuenta: cuentaIvaTrasladado, nombre: accounts.find(a => a.codigo === cuentaIvaTrasladado)?.nombre || 'IVA Trasladado Cobrado', cargo: 0, abono: iva, rfc: cfdi ? cfdi.rfcReceptor : '' });
+                    }
+
+                    polizas.push({
+                        id: mov.id,
+                        fecha: fechaPoliza,
+                        tipo: tipoPoliza,
+                        numero: numPoliza,
+                        concepto: conceptoPoliza,
+                        movimientos: entries,
+                        uuidAsociado: cfdi ? cfdi.uuid : 'SIN_XML_VINCULADO'
+                    });
+                });
+
+                return polizas;
+            }, [bankMovements, matches, cfdis, bankAccountCode, accounts, startingFolio, policyTypeMode]);
+
+            // --- LLAMADAS ASÍNCRONAS DE INTELIGENCIA ARTIFICIAL ---
+
+            // 1. ✨ Propuesta de Cuenta de Partida Doble
+            const handleAskAiForMovement = async (mov) => {
+                const savedKey = localStorage.getItem('cm_key') || '';
+                if (!savedKey) {
+                    triggerToast('⚠️ Se requiere registrar una API Key en la pestaña de Configuración.');
+                    setActiveTab('configuracion');
+                    return;
+                }
+                setLoadingAiSug(prev => ({ ...prev, [mov.id]: true }));
+                const amount = mov.cargo > 0 ? mov.cargo : mov.abono;
+                const txType = mov.cargo > 0 ? 'Egreso / Pago de Gasto' : 'Ingreso / Cobro';
+
+                const sysPrompt = "Actúas como un Contador Público Certificado experto en la contabilidad mexicana (NIF y reglas del SAT). Sugiere la mejor cuenta contable de acuerdo al catálogo provisto.";
+                const userPrompt = `Analiza la transacción bancaria:
+- Fecha: ${mov.fecha}
+- Referencia del Banco: ${mov.referencia}
+- Descripción del movimiento: ${mov.descripcion}
+- Importe: $${amount.toFixed(2)} (${txType})
+
+Catálogo contable en formato JSON:
+${JSON.stringify(accounts.map(a => ({ codigo: a.codigo, nombre: a.nombre, tipo: a.tipo })))}
+
+Recomienda la cuenta del catálogo que mejor se adapte.
+Retorna exclusivamente un objeto JSON válido (sin marcas markdown de bloque):
+{
+  "codigoSugerido": "código exacto de la cuenta",
+  "nombreSugerido": "nombre exacto de la cuenta",
+  "justificacion": "breve explicación técnica fiscal del por qué bajo la ley del ISR/IVA mexicana",
+  "confianza": un número entero del 1 al 100 de confianza
+}`;
+
+                const schema = {
+                    type: "OBJECT",
+                    properties: {
+                        codigoSugerido: { type: "STRING" },
+                        nombreSugerido: { type: "STRING" },
+                        justificacion: { type: "STRING" },
+                        confianza: { type: "INTEGER" }
+                    },
+                    required: ["codigoSugerido", "nombreSugerido", "justificacion", "confianza"]
+                };
+
+                try {
+                    const resText = await callAiAPI(userPrompt, sysPrompt, true, schema);
+                    const parsed = safeParseJSON(resText);
+                    setAiSuggestions(prev => ({ ...prev, [mov.id]: parsed }));
+                    triggerToast(`✨ Sugerencia contable de IA generada.`);
+                } catch (err) {
+                    console.error(err);
+                    triggerToast('No fue posible conectar con tu IA. Valida tu API Key.');
+                } finally {
+                    setLoadingAiSug(prev => ({ ...prev, [mov.id]: false }));
+                }
+            };
+
+            // 2. ✨ Generar Diagnóstico de Salud Fiscal Completo
+            const handleGenerateFiscalReport = async () => {
+                const savedKey = localStorage.getItem('cm_key') || '';
+                if (!savedKey) {
+                    triggerToast('⚠️ Se requiere registrar una API Key en la pestaña de Configuración.');
+                    setActiveTab('configuracion');
+                    return;
+                }
+                setLoadingAiReport(true);
+                const totalMovements = bankMovements.length;
+                const totalMatched = Object.keys(matches).length;
+
+                const sysPrompt = "Eres un Auditor Superior de Hacienda (SAT) de México. Ofreces un reporte minucioso, profesional y con lenguaje contable formal.";
+                const userPrompt = `Genera un reporte de salud fiscal y conciliación bancaria basado en:
+Rango: ${satConfig.f_inicio} a ${satConfig.f_fin}
+RFC: ${satConfig.rfc}
+
+Bancos (Flujo de Caja):
+- Depósitos: $${dashboardStats.totalBancosIngreso.toFixed(2)}
+- Retiros: $${dashboardStats.totalBancosEgreso.toFixed(2)}
+- Transacciones totales: ${totalMovements}
+
+SAT (Facturación XML):
+- Facturación Emitida (Ingresos): $${dashboardStats.totalCfdisEmitidos.toFixed(2)}
+- Facturación Recibida (Gastos): $${dashboardStats.totalCfdisRecibidos.toFixed(2)}
+- Facturas vigentes: ${cfdis.length}
+
+Estado de la Conciliación:
+- Movimientos bancarios enlazados con XML: ${totalMatched} de ${totalMovements}
+- Movimientos sin XML de soporte: ${totalMovements - totalMatched}
+
+Por favor evalúa:
+1. Posibles discrepancias fiscales (depósitos contra ingresos facturados).
+2. IVA de flujo de efectivo contra IVA de documentos.
+3. Recomendaciones técnicas fiscales (deducibilidad Art. 27 LISR) para blindar la contabilidad.
+Escribe un reporte bien estructurado en formato Markdown.`;
+
+                try {
+                    const report = await callAiAPI(userPrompt, sysPrompt);
+                    setAiReport(report);
+                    triggerToast('✨ Diagnóstico de auditoría fiscal completado.');
+                } catch (err) {
+                    console.error(err);
+                    triggerToast('Error al conectar con el servidor de auditoría IA.');
+                } finally {
+                    setLoadingAiReport(false);
+                }
+            };
+
+            // 3. ✨ Enviar Mensaje al Consultor IA
+            const handleSendChatMessage = async (e) => {
+                e.preventDefault();
+                if (!chatInput.trim()) return;
+
+                const savedKey = localStorage.getItem('cm_key') || '';
+                if (!savedKey) {
+                    triggerToast('⚠️ Se requiere registrar una API Key en la pestaña de Configuración.');
+                    setActiveTab('configuracion');
+                    return;
+                }
+
+                const userText = chatInput;
+                setChatMessages(prev => [...prev, { sender: 'user', text: userText }]);
+                setChatInput("");
+                setLoadingChat(true);
+
+                const sysPrompt = "Actúas como un experto asesor contable y fiscal corporativo en México. Conoces LISR, LIVA, CFF y NIF vigentes.";
+                const prompt = `RFC: ${satConfig.rfc}
+- Depósitos Banco: $${dashboardStats.totalBancosIngreso}
+- Gastos Banco: $${dashboardStats.totalBancosEgreso}
+- CFDI Emitidos: $${dashboardStats.totalCfdisEmitidos}
+- CFDI Recibidos: $${dashboardStats.totalCfdisRecibidos}
+
+Pregunta del contribuyente: "${userText}"`;
+
+                try {
+                    const aiResponse = await callAiAPI(prompt, sysPrompt);
+                    setChatMessages(prev => [...prev, { sender: 'ia', text: aiResponse }]);
+                } catch (err) {
+                    console.error(err);
+                    setChatMessages(prev => [...prev, { sender: 'ia', text: 'Tuvimos un inconveniente para procesar tu consulta con la IA. Confirma el estado de tu API Key.' }]);
+                } finally {
+                    setLoadingChat(false);
+                }
+            };
+
+            // Exportador compatible con CONTPAQi i Contabilidad (.txt)
+            const downloadContpaqiPolizas = () => {
+                let txtContent = "";
+                generatedPolizas.forEach(p => {
+                    const tipoNum = p.tipo === 'Ingreso' ? '1' : p.tipo === 'Egreso' ? '2' : '3';
+                    const cleanConcepto = p.concepto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 99);
+                    const formattedDate = p.fecha.replace(/-/g, ''); // AAAAMMDD
+                    
+                    txtContent += `P  ${formattedDate}   ${tipoNum}        ${p.numero} 0 0.00 ${cleanConcepto}\n`;
+                    p.movimientos.forEach(m => {
+                        const cleanCuenta = m.cuenta.replace(/-/g, '');
+                        const amount = m.cargo > 0 ? m.cargo : m.abono;
+                        const esAbono = m.cargo > 0 ? '0' : '1'; 
+                        txtContent += `M  ${cleanCuenta.padEnd(20, ' ')} ${p.uuidAsociado.substring(0,8).padEnd(10, ' ')} ${esAbono} ${amount.toFixed(2).padStart(15, ' ')} 0.00 ${cleanConcepto} ${p.uuidAsociado.padEnd(36, ' ')}\n`;
+                    });
+                });
+
+                const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `Polizas_CONTPAQI_${satConfig.rfc}.txt`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                triggerToast('Pólizas de diario descargadas para CONTPAQi (.TXT).');
+            };
+
+            // Exportador Alegra / CSV estándar
+            const downloadAlegraPolizas = () => {
+                let csvRows = [
+                    ['Fecha', 'Numero de Poliza', 'Tipo de Poliza', 'Concepto', 'Codigo Cuenta Contable', 'Nombre Cuenta', 'Cargo (Debe)', 'Abono (Haber)', 'UUID Relacionado', 'RFC Tercero']
+                ];
+
+                generatedPolizas.forEach(p => {
+                    p.movimientos.forEach(m => {
+                        csvRows.push([
+                            p.fecha,
+                            p.numero,
+                            p.tipo,
+                            p.concepto,
+                            m.cuenta,
+                            m.nombre,
+                            m.cargo > 0 ? m.cargo.toFixed(2) : '0.00',
+                            m.abono > 0 ? m.abono.toFixed(2) : '0.00',
+                            p.uuidAsociado,
+                            m.rfc || ''
+                        ]);
+                    });
+                });
+
+                const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+                    + csvRows.map(e => e.map(val => `"${val}"`).join(",")).join("\n");
+                
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `Polizas_Conciliadas_${satConfig.rfc}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                triggerToast('Asientos descargados en formato CSV para Alegra/Excel.');
+            };
+
+            const handleAddAccount = (e) => {
+                e.preventDefault();
+                const codigo = e.target.codigo.value.trim();
+                const nombre = e.target.nombre.value.trim();
+                const tipo = e.target.tipo.value;
+                if (!codigo || !nombre) return;
+                setAccounts(prev => [...prev, { codigo, nombre, tipo }]);
+                e.target.reset();
+                triggerToast('Cuenta registrada de forma exitosa.');
+            };
+
+            const filteredAccountsList = useMemo(() => {
+                return accounts.filter(acc => 
+                    acc.codigo.includes(accountSearchQuery) || 
+                    acc.nombre.toLowerCase().includes(accountSearchQuery.toLowerCase()) ||
+                    acc.tipo.toLowerCase().includes(accountSearchQuery.toLowerCase())
+                );
+            }, [accounts, accountSearchQuery]);
+
+            return (
+                <div className="flex-1 flex flex-col">
+                    {/* Header Principal */}
+                    <header className="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between flex-wrap gap-4">
+                            <div className="flex items-center space-x-3">
+                                <div className="bg-emerald-500 text-slate-950 p-2 rounded-lg font-bold flex items-center justify-center shadow-lg shadow-emerald-500/10">
+                                    <i data-lucide="calculator" className="w-6 h-6"></i>
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold tracking-tight">ConciliaMax <span className="text-emerald-400 font-mono text-sm border border-emerald-500/30 px-1.5 py-0.5 rounded">SAT 2026</span></h1>
+                                    <p className="text-xs text-slate-400">Automatización contable impulsada por Inteligencia Artificial</p>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center space-x-4">
+                                <div className="text-right">
+                                    <div className="text-xs text-slate-400">RFC Contribuyente</div>
+                                    <div className="text-sm font-mono font-bold text-emerald-400">{satConfig.rfc}</div>
+                                </div>
+                                <div className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${satConnected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                                    <span className={`w-2 h-2 rounded-full ${satConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                                    {satConnected ? 'SAT Conectado' : 'SAT Desconectado'}
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Barra de Navegación Secundaria */}
+                    <nav className="bg-white border-b border-slate-200 shadow-sm shrink-0">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex space-x-6 overflow-x-auto py-1">
+                                <button onClick={() => setActiveTab('dashboard')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'dashboard' ? 'border-emerald-600 text-emerald-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i data-lucide="layout-dashboard" className="w-4 h-4"></i> Resumen
+                                </button>
+                                <button onClick={() => setActiveTab('sat')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'sat' ? 'border-emerald-600 text-emerald-600 font-bold' : 'border-transparent text-slate-500'}`}>
+                                    <i data-lucide="cloud-lightning" className="w-4 h-4"></i> Conexión SAT
+                                    {cfdis.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-xs rounded-full font-bold">{cfdis.length}</span>}
+                                </button>
+                                <button onClick={() => setActiveTab('bancos')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'bancos' ? 'border-emerald-600 text-emerald-600 font-bold' : 'border-transparent text-slate-500'}`}>
+                                    <i data-lucide="landmark" className="w-4 h-4"></i> Banco
+                                    {bankMovements.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-800 text-xs rounded-full font-bold">{bankMovements.length}</span>}
+                                </button>
+                                <button onClick={() => setActiveTab('conciliacion')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'conciliacion' ? 'border-emerald-600 text-emerald-600 font-bold' : 'border-transparent text-slate-500'}`}>
+                                    <i data-lucide="git-compare" className="w-4 h-4"></i> Conciliación
+                                    {Object.keys(matches).length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-800 text-xs rounded-full font-bold">{Object.keys(matches).length}</span>}
+                                </button>
+                                <button onClick={() => setActiveTab('polizas')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'polizas' ? 'border-emerald-600 text-emerald-600 font-bold' : 'border-transparent text-slate-500'}`}>
+                                    <i data-lucide="file-spreadsheet" className="w-4 h-4"></i> Pólizas
+                                </button>
+                                <button onClick={() => setActiveTab('catalogo')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'catalogo' ? 'border-emerald-600 text-emerald-600 font-bold' : 'border-transparent text-slate-500'}`}>
+                                    <i data-lucide="book-open" className="w-4 h-4"></i> Catálogo
+                                </button>
+                                <button onClick={() => setActiveTab('consultor-ia')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'consultor-ia' ? 'border-indigo-600 text-indigo-700 font-bold' : 'border-transparent text-slate-500'}`}>
+                                    <span>✨</span> Consultor IA
+                                </button>
+                                <button onClick={() => setActiveTab('configuracion')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'configuracion' ? 'border-rose-600 text-rose-600 font-bold' : 'border-transparent text-slate-500'}`}>
+                                    <i data-lucide="settings" className="w-4 h-4"></i> Configuración API
+                                </button>
+                            </div>
+                        </div>
+                    </nav>
+
+                    {/* Contenedor de Pantallas */}
+                    <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        
+                        {/* TAB: DASHBOARD */}
+                        {activeTab === 'dashboard' && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
+                                    <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                        <div>
+                                            <h2 className="text-2xl font-bold">Automatización del Ejercicio Fiscal</h2>
+                                            <p className="text-slate-300 text-sm mt-1 max-w-2xl">
+                                                Concilia facturas del SAT (CFDI 4.0) contra tus depósitos y egresos bancarios. Genera de forma automática los asientos de partida doble listos para tu software contable.
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2 shrink-0">
+                                            {bankMovements.length === 0 && (
+                                                <button onClick={handleLoadDemoData} className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 shadow-lg shadow-amber-500/10">
+                                                    <i data-lucide="play" className="w-4 h-4"></i> Cargar Demo Express
+                                                </button>
+                                            )}
+                                            <button onClick={triggerSmartMatch} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20">
+                                                <i data-lucide="sparkles" className="w-4 h-4"></i> Conciliar Inteligente
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* KPIs */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                                        <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Tasa de Conciliación</div>
+                                        <div className="text-3xl font-bold text-slate-900 mt-2 flex items-baseline gap-1 font-mono">
+                                            {dashboardStats.conciliationRate}%
+                                            <span className="text-xs text-slate-500 font-sans font-normal">({dashboardStats.totalMatched}/{dashboardStats.totalMovements})</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 rounded-full h-1.5 mt-3">
+                                            <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${dashboardStats.conciliationRate}%` }}></div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                                        <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Facturado en el SAT</div>
+                                        <div className="text-2xl font-bold text-emerald-600 mt-2 font-mono">
+                                            ${dashboardStats.totalCfdisEmitidos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                        </div>
+                                        <div className="text-xs text-slate-400 mt-1">Ingresos totales reportados</div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                                        <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider font-sans">Egresos Facturados</div>
+                                        <div className="text-2xl font-bold text-amber-600 mt-2 font-mono">
+                                            ${dashboardStats.totalCfdisRecibidos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                        </div>
+                                        <div className="text-xs text-slate-400 mt-1">Soporte fiscal de deducciones</div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                                        <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Flujo de Caja en Bancos</div>
+                                        <div className="text-sm font-bold text-slate-900 mt-2 font-mono space-y-1">
+                                            <div className="text-emerald-600">Depósitos: +${dashboardStats.totalBancosIngreso.toLocaleString('es-MX')}</div>
+                                            <div className="text-rose-600">Retiros: -${dashboardStats.totalBancosEgreso.toLocaleString('es-MX')}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2 space-y-4">
+                                        <h3 className="text-lg font-bold flex items-center gap-2 border-b border-slate-100 pb-3">
+                                            <i data-lucide="help-circle" className="text-emerald-500 w-5 h-5"></i> ¿Cómo automatizar tu conciliación con ConciliaMax?
+                                        </h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs leading-relaxed text-slate-600">
+                                            <div className="p-4 bg-slate-50 rounded-lg">
+                                                <h4 className="font-bold text-slate-900 mb-1">1. Conecta con el SAT</h4>
+                                                <p>Descarga tus XMLs emitidos y recibidos de forma masiva indicando el periodo fiscal que deseas analizar.</p>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 rounded-lg">
+                                                <h4 className="font-bold text-slate-900 mb-1">2. Sube tus Bancos</h4>
+                                                <p>Carga el Estado de Cuenta de tu banca electrónica. El sistema reconocerá automáticamente montos y fechas.</p>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 rounded-lg">
+                                                <h4 className="font-bold text-slate-900 mb-1">3. Conciliación & IA</h4>
+                                                <p>Utiliza nuestra Inteligencia Artificial para clasificar de manera precisa transacciones complejas o sin XML.</p>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 rounded-lg">
+                                                <h4 className="font-bold text-slate-900 mb-1">4. Genera Pólizas</h4>
+                                                <p>Descarga tus archivos de pólizas listos para importar a CONTPAQi (.txt) o Alegra (.csv) sin capturas manuales.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                                        <div>
+                                            <h3 className="font-bold text-slate-900 mb-2">Estado de Datos de Sesión</h3>
+                                            <ul className="text-xs space-y-2 text-slate-600 font-mono">
+                                                <li className="flex justify-between"><span>Comprobantes SAT:</span> <span className="font-bold">{cfdis.length}</span></li>
+                                                <li className="flex justify-between"><span>Transacciones Banco:</span> <span className="font-bold">{bankMovements.length}</span></li>
+                                                <li className="flex justify-between"><span>Mapeadas con Éxito:</span> <span className="font-bold text-emerald-600">{Object.keys(matches).length}</span></li>
+                                            </ul>
+                                        </div>
+                                        {bankMovements.length === 0 && (
+                                            <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-500 text-center">
+                                                ¿Sin archivos de prueba? Pulsa "Cargar Demo Express" para activar el simulador.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: CONEXIÓN SAT */}
+                        {activeTab === 'sat' && (
+                            <div className="space-y-6">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                    <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                                        <i data-lucide="cloud" className="text-emerald-500 w-5 h-5"></i> Conexión con los Servidores del SAT
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mb-6">
+                                        Establece conexión con el portal oficial del SAT de forma local y encriptada en tu dispositivo. Descarga los paquetes XML vigentes de tu periodo fiscal.
+                                    </p>
+
+                                    <form onSubmit={handleConnectSat} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-5 rounded-lg border border-slate-100">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">RFC Empresa</label>
+                                            <input type="text" maxLength={13} className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm font-mono uppercase tracking-wider outline-none" placeholder="XAXX010101000" value={satConfig.rfc} onChange={(e) => setSatConfig({ ...satConfig, rfc: e.target.value.toUpperCase() })} required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Contraseña (CIEC)</label>
+                                            <input type="password" className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-sm outline-none" placeholder="••••••••••••" value={satConfig.password} onChange={(e) => setSatConfig({ ...satConfig, password: e.target.value })} required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase font-sans">Rango de Fecha</label>
+                                            <div className="flex gap-2">
+                                                <input type="date" className="w-1/2 bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-xs" value={satConfig.f_inicio} onChange={(e) => setSatConfig({ ...satConfig, f_inicio: e.target.value })} />
+                                                <input type="date" className="w-1/2 bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-xs" value={satConfig.f_fin} onChange={(e) => setSatConfig({ ...satConfig, f_fin: e.target.value })} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <button type="submit" disabled={loadingSat} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-all flex items-center justify-center gap-2">
+                                                {loadingSat ? 'Descargando de SAT...' : 'Descargar XML de SAT'}
+                                            </button>
+                                        </div>
+                                    </form>
+
+                                    {loadingSat && (
+                                        <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200 animate-pulse">
+                                            <div className="flex justify-between text-xs text-slate-500 font-bold mb-1 font-mono">
+                                                <span>ws.sat.gob.mx Handshake...</span>
+                                                <span>{satProgress}%</span>
+                                            </div>
+                                            <div className="w-full bg-slate-200 rounded-full h-2">
+                                                <div className="bg-emerald-500 h-2 rounded-full transition-all" style={{ width: `${satProgress}%` }}></div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {cfdis.length > 0 && (
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                        <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
+                                            <h3 className="text-lg font-bold">Listado de Facturas (CFDI XMLs) Descargados</h3>
+                                            <div className="flex gap-2 text-xs">
+                                                <button onClick={() => setCfdiTypeFilter('Todos')} className={`px-3 py-1.5 rounded-lg ${cfdiTypeFilter === 'Todos' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>Todos</button>
+                                                <button onClick={() => setCfdiTypeFilter('Recibido')} className={`px-3 py-1.5 rounded-lg ${cfdiTypeFilter === 'Recibido' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>Recibidos (Gastos)</button>
+                                                <button onClick={() => setCfdiTypeFilter('Emitido')} className={`px-3 py-1.5 rounded-lg ${cfdiTypeFilter === 'Emitido' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>Emitidos (Ingresos)</button>
+                                            </div>
+                                        </div>
+
+                                        <div className="overflow-x-auto text-xs font-mono">
+                                            <table className="w-full text-left">
+                                                <thead>
+                                                    <tr className="border-b border-slate-200 text-slate-400">
+                                                        <th className="py-2.5">Fecha</th>
+                                                        <th>Tipo</th>
+                                                        <th>RFC Emisor/Receptor</th>
+                                                        <th>Concepto</th>
+                                                        <th className="text-right">Total</th>
+                                                        <th className="text-center">XML</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-150">
+                                                    {cfdis.filter(c => cfdiTypeFilter === 'Todos' || c.tipo === cfdiTypeFilter).map(cf => (
+                                                        <tr key={cf.uuid} className="hover:bg-slate-50">
+                                                            <td className="py-2.5 whitespace-nowrap">{cf.fecha}</td>
+                                                            <td>
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${cf.tipo === 'Emitido' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                                                    {cf.tipo}
+                                                                </span>
+                                                            </td>
+                                                            <td>{cf.tipo === 'Emitido' ? cf.rfcReceptor : cf.rfcEmisor}</td>
+                                                            <td className="max-w-xs truncate font-sans text-slate-600">{cf.concepto}</td>
+                                                            <td className="text-right font-bold">${cf.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                                                            <td className="text-center">
+                                                                <button onClick={() => setSelectedCfdi(cf)} className="text-slate-500 hover:text-slate-900">
+                                                                    <i data-lucide="eye" className="w-4 h-4 inline"></i>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB: BANCOS */}
+                        {activeTab === 'bancos' && (
+                            <div className="space-y-6 animate-fade-in font-sans">
+                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                    <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                                        <i data-lucide="landmark" className="text-emerald-500 w-5 h-5"></i> Estado de Cuenta Bancario
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mb-6">
+                                        Importa el Estado de Cuenta de tu banca electrónica. El sistema reconocerá montos y fechas para vincularlos con las facturas del SAT.
+                                    </p>
+
+                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 hover:border-emerald-500 hover:bg-slate-50 transition-all text-center relative cursor-pointer group">
+                                        <input type="file" accept=".csv, .xls, .xlsx" onChange={handleBankUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                        <div className="flex flex-col items-center justify-center">
+                                            <i data-lucide="file-up" className="w-10 h-10 text-slate-400 group-hover:scale-110 transition-transform mb-2"></i>
+                                            <span className="text-sm font-bold text-slate-700">Arrastra tu archivo aquí o haz clic para buscarlo</span>
+                                            <span className="text-xs text-slate-400 mt-1">Formatos admitidos: .CSV, .XLS, .XLSX</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {bankMovements.length > 0 && (
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="font-bold">Movimientos Bancarios Reconocidos</h3>
+                                            <div className="flex gap-2 text-xs font-medium">
+                                                <button onClick={() => setBankMatchedFilter('Todos')} className={`px-2.5 py-1 rounded-lg ${bankMatchedFilter === 'Todos' ? 'bg-slate-900 text-white' : 'bg-slate-100'}`}>Todos</button>
+                                                <button onClick={() => setBankMatchedFilter('NoConciliados')} className={`px-2.5 py-1 rounded-lg ${bankMatchedFilter === 'NoConciliados' ? 'bg-slate-900 text-white' : 'bg-slate-100'}`}>Sin Conciliar</button>
+                                            </div>
+                                        </div>
+
+                                        <div className="overflow-x-auto text-xs font-mono">
+                                            <table className="w-full text-left">
+                                                <thead>
+                                                    <tr className="border-b border-slate-200 text-slate-400">
+                                                        <th className="py-2">Fecha</th>
+                                                        <th>Referencia</th>
+                                                        <th>Descripción</th>
+                                                        <th className="text-right">Cargos (-)</th>
+                                                        <th className="text-right">Abonos (+)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {bankMovements.filter(m => bankMatchedFilter === 'Todos' || !matches[m.id]).map(m => (
+                                                        <tr key={m.id} className="hover:bg-slate-50">
+                                                            <td className="py-2.5 whitespace-nowrap">{m.fecha}</td>
+                                                            <td className="font-sans font-bold text-slate-800">{m.referencia}</td>
+                                                            <td className="max-w-xs truncate font-sans text-slate-500">{m.descripcion}</td>
+                                                            <td className="text-right text-rose-600 font-bold">{m.cargo > 0 ? `-$${m.cargo.toFixed(2)}` : '-'}</td>
+                                                            <td className="text-right text-emerald-600 font-bold">{m.abono > 0 ? `+$${m.abono.toFixed(2)}` : '-'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB: CONCILIACIÓN */}
+                        {activeTab === 'conciliacion' && (
+                            <div className="space-y-6">
+                                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <div>
+                                        <h3 className="font-bold">Asistente de Conciliación</h3>
+                                        <p className="text-xs text-slate-500 font-sans">Enlaza transacciones bancarias contra facturas vigentes de forma manual o inteligente.</p>
+                                    </div>
+                                    <button onClick={triggerSmartMatch} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5">
+                                        <i data-lucide="sparkles" className="w-4 h-4"></i> Ejecutar Cruce Inteligente
+                                    </button>
+                                </div>
+
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 overflow-x-auto">
+                                    <table className="w-full text-left text-xs font-sans">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 text-slate-400 uppercase tracking-wider text-[10px]">
+                                                <th className="py-2">Movimiento de Banco</th>
+                                                <th>Importe</th>
+                                                <th className="text-center">Enlace</th>
+                                                <th>Comprobante SAT</th>
+                                                <th className="text-right">Importe SAT</th>
+                                                <th>Sugerencia IA</th>
+                                                <th className="text-center">Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {bankMovements.length > 0 ? (
+                                                bankMovements.map(mov => {
+                                                    const matchedUuid = matches[mov.id];
+                                                    const cfdi = matchedUuid ? cfdis.find(c => c.uuid === matchedUuid) : null;
+                                                    const amount = mov.cargo > 0 ? mov.cargo : mov.abono;
+
+                                                    let autoSuggestedCfdi = null;
+                                                    if (!matchedUuid) {
+                                                        autoSuggestedCfdi = cfdis.find(c => 
+                                                            Math.abs(c.total - amount) < 0.05 && 
+                                                            !Object.values(matches).includes(c.uuid) &&
+                                                            ((mov.cargo > 0 && c.tipo === 'Recibido') || (mov.abono > 0 && c.tipo === 'Emitido'))
+                                                        );
+                                                    }
+
+                                                    const isSug = aiSuggestions[mov.id];
+                                                    const isSugLoading = loadingAiSug[mov.id];
+
+                                                    return (
+                                                        <tr key={mov.id} className="hover:bg-slate-50/50">
+                                                            <td className="py-3">
+                                                                <div className="font-bold text-slate-800">{mov.referencia}</div>
+                                                                <div className="text-[11px] text-slate-400 font-mono">{mov.fecha} - {mov.descripcion}</div>
+                                                            </td>
+                                                            <td className="font-mono font-bold">${amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                                                            <td className="text-center">
+                                                                <i data-lucide={matchedUuid ? "link" : "link-2"} className={`w-4 h-4 inline ${matchedUuid ? 'text-emerald-500' : 'text-slate-300'}`}></i>
+                                                            </td>
+                                                            <td>
+                                                                {cfdi ? (
+                                                                    <div>
+                                                                        <div className="font-semibold text-emerald-800 truncate max-w-[150px]">{cfdi.nombreEmisor || cfdi.nombreReceptor}</div>
+                                                                        <div className="text-[10px] text-slate-400 font-mono">{cfdi.uuid.substring(0,8)}...</div>
+                                                                    </div>
+                                                                ) : autoSuggestedCfdi ? (
+                                                                    <div className="bg-amber-50 border border-dashed border-amber-300 p-1.5 rounded text-[10px] space-y-1">
+                                                                        <span className="font-bold block text-amber-800">Auto-Sugerencia:</span>
+                                                                        <span className="block truncate max-w-[150px]">{autoSuggestedCfdi.nombreEmisor}</span>
+                                                                        <button onClick={() => linkManualMatch(mov.id, autoSuggestedCfdi.uuid)} className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded text-[9px]">Vincular</button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <select onChange={(e) => linkManualMatch(mov.id, e.target.value)} className="text-[10px] bg-slate-50 border border-slate-200 rounded p-1 max-w-[150px]">
+                                                                        <option value="">Vincular manual...</option>
+                                                                        {cfdis.filter(c => !Object.values(matches).includes(c.uuid)).map(c => (
+                                                                            <option key={c.uuid} value={c.uuid}>${c.total.toFixed(2)} - {c.nombreEmisor.substring(0,10)}...</option>
+                                                                        ))}
+                                                                    </select>
+                                                                )}
+                                                            </td>
+                                                            <td className="text-right font-mono font-bold">{cfdi ? `$${cfdi.total.toFixed(2)}` : '-'}</td>
+                                                            
+                                                            {/* AI Account Suggester */}
+                                                            <td className="min-w-[180px]">
+                                                                {isSug ? (
+                                                                    <div className="bg-indigo-50 border border-indigo-200 p-2 rounded text-[10px] space-y-1">
+                                                                        <div className="font-bold text-indigo-900">{isSug.codigoSugerido} - {isSug.nombreSugerido}</div>
+                                                                        <p className="text-[9px] text-slate-500 italic">"{isSug.justificacion}"</p>
+                                                                        <span className="text-[9px] font-bold text-emerald-600 block">Confianza: {isSug.confianza}%</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <button 
+                                                                        onClick={() => handleAskAiForMovement(mov)}
+                                                                        disabled={isSugLoading}
+                                                                        className="border border-indigo-200 hover:bg-indigo-50 text-indigo-700 font-bold py-1 px-2.5 rounded text-[10px] flex items-center gap-1"
+                                                                    >
+                                                                        {isSugLoading ? 'Analizando...' : <><span>✨</span> Consultar IA</>}
+                                                                    </button>
+                                                                )}
+                                                            </td>
+
+                                                            <td className="text-center">
+                                                                {matchedUuid && (
+                                                                    <button onClick={() => unlinkMatch(mov.id)} className="text-rose-500 hover:text-rose-700">
+                                                                        <i data-lucide="x" className="w-4 h-4 inline"></i>
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan={7} className="py-8 text-center text-slate-400 italic">No se han cargado transacciones para conciliar.</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: PÓLIZAS */}
+                        {activeTab === 'polizas' && (
+                            <div className="space-y-6">
+                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+                                        <div>
+                                            <h3 className="font-bold text-lg">Asientos y Pólizas Contables</h3>
+                                            <p className="text-xs text-slate-500 font-sans">Estructura de pólizas de diario listas para importación masiva.</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={downloadContpaqiPolizas} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors">Descargar CONTPAQi (.txt)</button>
+                                            <button onClick={downloadAlegraPolizas} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors">Descargar Alegra (CSV)</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100 text-xs">
+                                        <div>
+                                            <label className="block font-bold text-slate-500 mb-1">Folio Inicial de Pólizas</label>
+                                            <input type="number" min="1" className="bg-white border border-slate-300 rounded-lg py-1 px-3 w-full font-mono outline-none" value={startingFolio} onChange={(e) => setStartingFolio(Math.max(1, parseInt(e.target.value) || 1))} />
+                                        </div>
+                                        <div>
+                                            <label className="block font-bold text-slate-500 mb-1 font-sans">Tipo de Póliza</label>
+                                            <select value={policyTypeMode} onChange={(e) => setPolicyTypeMode(e.target.value)} className="bg-white border border-slate-300 rounded-lg py-1 px-3 w-full outline-none font-medium">
+                                                <option value="auto">Automático (Ingreso / Egreso)</option>
+                                                <option value="diario">Diario</option>
+                                                <option value="egreso">Egreso</option>
+                                                <option value="ingreso">Ingreso</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block font-bold text-slate-500 mb-1 font-sans">Cuenta Contable Bancos</label>
+                                            <select value={bankAccountCode} onChange={(e) => setBankAccountCode(e.target.value)} className="bg-white border border-slate-300 rounded-lg py-1 px-3 w-full outline-none font-medium">
+                                                {accounts.filter(a => a.tipo === 'Activo' && a.nombre.toLowerCase().includes('banco')).map(acc => (
+                                                    <option key={acc.codigo} value={acc.codigo}>{acc.codigo} - {acc.nombre}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 font-mono text-xs">
+                                    {generatedPolizas.map(p => (
+                                        <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                                            <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-bold uppercase">Póliza de {p.tipo} #{p.numero}</span>
+                                                    <span className="font-bold text-slate-500">{p.fecha}</span>
+                                                    <span className="text-slate-700 font-sans font-bold">{p.concepto}</span>
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">UUID: {p.uuidAsociado}</div>
+                                            </div>
+                                            <div className="p-4 overflow-x-auto">
+                                                <table className="w-full text-left">
+                                                    <thead>
+                                                        <tr className="border-b border-slate-200 text-slate-400 uppercase tracking-wider text-[10px]">
+                                                            <th className="py-1">Cuenta</th>
+                                                            <th>Nombre de la Cuenta</th>
+                                                            <th className="text-right">Cargos (Debe)</th>
+                                                            <th className="text-right">Abonos (Haber)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {p.movimientos.map((m, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50">
+                                                                <td className="py-2.5 font-bold text-slate-800">{m.cuenta}</td>
+                                                                <td className="font-sans text-slate-600">{m.nombre}</td>
+                                                                <td className="text-right font-bold text-slate-900">{m.cargo > 0 ? `$${m.cargo.toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '$0.00'}</td>
+                                                                <td className="text-right font-bold text-slate-900">{m.abono > 0 ? `$${m.abono.toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '$0.00'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: CATÁLOGO */}
+                        {activeTab === 'catalogo' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-sans">
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                        <h3 className="font-bold mb-2">Importación del Catálogo</h3>
+                                        <p className="text-xs text-slate-500 mb-4">Mapea tu propio catálogo contable (.csv) exportado de CONTPAQi o Aspel COI de forma directa.</p>
+
+                                        <div className="border border-dashed border-slate-300 rounded-lg p-5 bg-slate-50 text-center relative cursor-pointer hover:border-emerald-500 transition-colors">
+                                            <input type="file" accept=".csv" onChange={handleCatalogUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                            <i data-lucide="file-spreadsheet" className="w-8 h-8 text-slate-400 mx-auto mb-2"></i>
+                                            <span className="text-xs font-bold text-slate-700 block">Subir Catálogo CSV</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-fit">
+                                        <h3 className="font-bold mb-4">Añadir Cuenta Contable</h3>
+                                        <form onSubmit={handleAddAccount} className="space-y-4 text-xs">
+                                            <div>
+                                                <label className="block text-slate-500 font-bold mb-1">Código Contable</label>
+                                                <input type="text" name="codigo" className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 font-mono outline-none" placeholder="102-01-002" required />
+                                            </div>
+                                            <div>
+                                                <label className="block text-slate-500 font-bold mb-1">Nombre / Razón Social</label>
+                                                <input type="text" name="nombre" className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-medium" placeholder="Bancos Nacionales - Santander" required />
+                                            </div>
+                                            <div>
+                                                <label className="block text-slate-500 font-bold mb-1">Tipo de Cuenta</label>
+                                                <select name="tipo" className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-medium">
+                                                    <option value="Activo">Activo (Bancos, Clientes)</option>
+                                                    <option value="Pasivo">Pasivo (Proveedores, Acreedores)</option>
+                                                    <option value="Capital">Capital / Patrimonio</option>
+                                                    <option value="Ingreso">Ingreso (Venta, Arrendamiento)</option>
+                                                    <option value="Egreso">Egreso (Gastos de Operación)</option>
+                                                </select>
+                                            </div>
+                                            <button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg">Guardar Cuenta</button>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col h-[650px]">
+                                    <div className="mb-4 flex items-center justify-between">
+                                        <h3 className="font-bold">Mapeo de Cuentas Contables ({filteredAccountsList.length})</h3>
+                                        <input type="text" className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none w-64" placeholder="Buscar por código o nombre..." value={accountSearchQuery} onChange={(e) => setAccountSearchQuery(e.target.value)} />
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto border border-slate-100 rounded-lg text-xs">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-slate-50 sticky top-0 text-slate-500 font-bold">
+                                                <tr className="border-b border-slate-200">
+                                                    <th className="py-2 px-3">Código</th>
+                                                    <th className="px-3">Clasificación</th>
+                                                    <th className="px-3">Nombre / Concepto</th>
+                                                    <th className="text-center">Borrar</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 font-mono">
+                                                {filteredAccountsList.map(acc => (
+                                                    <tr key={acc.codigo} className="hover:bg-slate-50">
+                                                        <td className="py-2.5 px-3 font-bold text-slate-800">{acc.codigo}</td>
+                                                        <td className="px-3">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-sans ${acc.tipo === 'Activo' ? 'bg-blue-50 text-blue-700' : acc.tipo === 'Pasivo' ? 'bg-purple-50 text-purple-700' : 'bg-orange-50 text-orange-700'}`}>
+                                                                {acc.tipo}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3 font-sans text-slate-600 font-semibold">{acc.nombre}</td>
+                                                        <td className="text-center font-sans">
+                                                            <button onClick={() => setAccounts(accounts.filter(a => a.codigo !== acc.codigo))} className="text-slate-400 hover:text-rose-600">
+                                                                <i data-lucide="trash-2" className="w-4 h-4 inline"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: CONSULTOR IA */}
+                        {activeTab === 'consultor-ia' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col h-[650px] animate-fade-in font-sans">
+                                    <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4 shrink-0">
+                                        <div>
+                                            <h3 className="font-bold flex items-center gap-1.5">
+                                                <span>✨</span> Auditoría de Discrepancia & Diagnóstico SAT
+                                            </h3>
+                                            <p className="text-xs text-slate-500">Detecta omisiones de facturas y discrepancias en tu flujo financiero.</p>
+                                        </div>
+                                        <button 
+                                            onClick={handleGenerateFiscalReport}
+                                            disabled={loadingAiReport}
+                                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors"
+                                        >
+                                            {loadingAiReport ? 'Generando Diagnóstico...' : 'Generar Auditoría'}
+                                        </button>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto bg-slate-50 p-5 rounded-lg border border-slate-200 font-sans text-xs text-slate-800 leading-relaxed whitespace-pre-line">
+                                        {aiReport ? (
+                                            <div>
+                                                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-lg font-bold mb-4 flex items-center gap-1.5">
+                                                    <i data-lucide="check-circle" className="w-4 h-4 text-emerald-600"></i> Reporte contable estructurado por Inteligencia Artificial.
+                                                </div>
+                                                <div className="text-sm leading-relaxed whitespace-pre-line text-slate-700">{aiReport}</div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center h-full text-center text-slate-400">
+                                                <i data-lucide="file-text" className="w-12 h-12 mb-2 text-slate-300"></i>
+                                                <h4 className="font-bold text-slate-700 text-sm">Ningún reporte activo</h4>
+                                                <p className="text-xs max-w-xs mt-1">Presiona "Generar Auditoría" para evaluar la facturación del SAT contra tus estados de cuenta bancarios.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col h-[650px] animate-fade-in font-sans">
+                                    <div className="border-b border-slate-100 pb-4 mb-4 shrink-0">
+                                        <h3 className="font-bold flex items-center gap-1.5"><i data-lucide="messages-square" className="text-indigo-500 w-5 h-5"></i> Consultor Fiscal SAT</h3>
+                                        <p className="text-xs text-slate-500">Resuelve dudas sobre impuestos de tus movimientos del periodo.</p>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto space-y-4 p-4 bg-slate-50 rounded-lg border border-slate-200 mb-4 flex flex-col">
+                                        {chatMessages.map((msg, index) => (
+                                            <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                <div className={`max-w-[85%] p-3.5 rounded-xl text-xs leading-relaxed ${msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-250 shadow-sm'}`}>
+                                                    <div className="font-bold text-[9px] text-slate-400 mb-1 uppercase tracking-wider">{msg.sender === 'user' ? 'Tú (Contribuyente)' : '✨ Consultor Contable IA'}</div>
+                                                    <div className="whitespace-pre-wrap">{msg.text}</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {loadingChat && (
+                                            <div className="text-xs text-slate-400 animate-pulse flex items-center gap-1">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce"></span>
+                                                Escribiendo respuesta fiscal técnica...
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <form onSubmit={handleSendChatMessage} className="flex gap-2 shrink-0">
+                                        <input type="text" className="flex-1 bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 text-xs outline-none" placeholder="Ej: ¿Un egreso bancario de $2500 sin CFDI es deducible?" value={chatInput} onChange={(e) => setChatInput(e.target.value)} disabled={loadingChat} />
+                                        <button type="submit" disabled={loadingChat || !chatInput.trim()} className="bg-slate-900 text-white py-2 px-4 rounded-lg text-xs font-bold hover:bg-slate-800">Enviar</button>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: CONFIGURACIÓN API (NUEVO) */}
+                        {activeTab === 'configuracion' && (
+                            <div className="max-w-2xl mx-auto bg-white rounded-xl border border-slate-200 shadow-md overflow-hidden font-sans animate-fade-in">
+                                <div className="bg-slate-900 text-white p-6 flex justify-between items-center">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-rose-500/10 p-2 rounded-lg text-rose-400 border border-rose-500/20">
+                                            <i data-lucide="settings" className="w-5 h-5"></i>
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold">Configuración de Proveedor de IA</h3>
+                                            <p className="text-xs text-slate-300">Conecta tu propia clave de API de forma local y 100% segura.</p>
+                                        </div>
+                                    </div>
+                                    <span className="bg-slate-800 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-[10px] rounded-lg font-mono font-bold uppercase">
+                                        Client-Side Only
+                                    </span>
+                                </div>
+
+                                <div className="p-6 space-y-6">
+                                    <div className="bg-indigo-50 border border-indigo-100 text-indigo-900 p-4 rounded-lg text-xs leading-relaxed">
+                                        <h4 className="font-bold flex items-center gap-1.5 mb-1"><i data-lucide="info" className="w-4 h-4 text-indigo-700"></i> Resguardo de Seguridad Contable</h4>
+                                        <p>
+                                            Tus credenciales y datos financieros se almacenan localmente en el navegador (`localStorage`). Ningún metadato es transmitido ni guardado en servidores ajenos a los de tu proveedor de IA de elección.
+                                        </p>
+                                    </div>
+
+                                    <form onSubmit={handleSaveConfig} className="space-y-4 text-xs">
+                                        <div>
+                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase">Proveedor LLM</label>
+                                            <select value={apiProvider} onChange={(e) => handleProviderChange(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold">
+                                                <option value="google">Google AI Studio (Gemini - Recomendado)</option>
+                                                <option value="anthropic">Anthropic Console (Claude)</option>
+                                                <option value="openrouter">OpenRouter (Gemini, Claude, Llama3)</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase">API Key del Proveedor</label>
+                                            <div className="relative">
+                                                <input 
+                                                    type={showApiKey ? "text" : "password"} 
+                                                    className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 pl-3 pr-10 font-mono outline-none" 
+                                                    placeholder={apiProvider === 'google' ? "AIzaSy..." : "sk-ant-..."} 
+                                                    value={apiKey} 
+                                                    onChange={(e) => setApiKey(e.target.value)} 
+                                                    required 
+                                                />
+                                                <button type="button" onClick={() => setShowApiKey(!showApiKey)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+                                                    <i data-lucide={showApiKey ? "eye-off" : "eye"} className="w-4 h-4"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase">Modelo de IA Seleccionado</label>
+                                            {apiProvider === 'google' && (
+                                                <select value={apiModel} onChange={(e) => setApiModel(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold">
+                                                    <option value="gemini-2.5-flash">gemini-2.5-flash (Excelente balance y precisión)</option>
+                                                    <option value="gemini-2.5-pro">gemini-2.5-pro (Ideal para auditoría fiscal técnica avanzada)</option>
+                                                    <option value="gemini-1.5-flash">gemini-1.5-flash (Rápido y económico)</option>
+                                                </select>
+                                            )}
+                                            {apiProvider === 'anthropic' && (
+                                                <select value={apiModel} onChange={(e) => setApiModel(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold">
+                                                    <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest (Auditoría de alta precisión)</option>
+                                                    <option value="claude-3-5-haiku-latest">claude-3-5-haiku-latest (Económico y veloz)</option>
+                                                </select>
+                                            )}
+                                            {apiProvider === 'openrouter' && (
+                                                <input type="text" className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 font-mono outline-none" placeholder="google/gemini-2.5-flash" value={apiModel} onChange={(e) => setApiModel(e.target.value)} required />
+                                            )}
+                                        </div>
+
+                                        <div className="flex gap-2 pt-4 border-t border-slate-100 flex-wrap">
+                                            <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-2 px-5 rounded-lg">Guardar Configuración</button>
+                                            <button type="button" onClick={handleTestConnection} disabled={testingConnection} className="border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-2 px-5 rounded-lg">
+                                                {testingConnection ? 'Probando...' : 'Probar Conexión'}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="bg-white border-t border-slate-200 py-6 mt-12 text-center text-xs text-slate-500 font-sans shrink-0">
+                        <div className="max-w-7xl mx-auto px-4">
+                            <p>© 2026 ConciliaMax México Contable. Desarrollado para importaciones a CONTPAQi i Contabilidad y Alegra ERP.</p>
+                            <p className="mt-1 text-slate-400">Los archivos de pólizas generados son compatibles con la estructura XML del SAT (Versión CFDI 4.0).</p>
+                        </div>
+                    </footer>
+
+                    {/* MODAL: XML VISUALIZER */}
+                    {selectedCfdi && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+                            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden">
+                                <div className="bg-slate-950 text-white p-4 flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <i data-lucide="file-code" className="text-emerald-400 w-5 h-5"></i>
+                                        <h3 className="font-bold text-sm font-mono">Visor XML CFDI 4.0 (SAT México)</h3>
+                                    </div>
+                                    <button onClick={() => setSelectedCfdi(null)} className="text-slate-400 hover:text-white transition-colors">
+                                        <i data-lucide="x" className="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                                <div className="p-6 space-y-4 max-h-[450px] overflow-y-auto">
+                                    <div className="bg-slate-50 p-4 rounded-lg font-mono text-[10px] text-slate-700 border border-slate-200 leading-normal">
+                                        <span className="text-blue-600">&lt;cfdi:Comprobante</span> Version="4.0" Fecha="{selectedCfdi.fecha}" MetodoPago="{selectedCfdi.metodoPago}" FormaPago="{selectedCfdi.formaPago}" TipoDeComprobante="{selectedCfdi.tipo === 'Emitido' ? 'I' : 'G'}" SubTotal="{selectedCfdi.subtotal.toFixed(2)}" Total="{selectedCfdi.total.toFixed(2)}" Moneda="MXN" UUID="{selectedCfdi.uuid}"<span className="text-blue-600">&gt;</span><br />
+                                        &nbsp;&nbsp;<span className="text-blue-600">&lt;cfdi:Emisor</span> Rfc="{selectedCfdi.rfcEmisor}" Nombre="{selectedCfdi.nombreEmisor}" RegimenFiscal="601"<span className="text-blue-600">/&gt;</span><br />
+                                        &nbsp;&nbsp;<span className="text-blue-600">&lt;cfdi:Receptor</span> Rfc="{selectedCfdi.rfcReceptor}" Nombre="{selectedCfdi.nombreReceptor}" UsoCFDI="G03" RegimenFiscalReceptor="601"<span className="text-blue-600">/&gt;</span><br />
+                                        &nbsp;&nbsp;<span className="text-blue-600">&lt;cfdi:Conceptos&gt;</span><br />
+                                        &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-blue-600">&lt;cfdi:Concepto</span> ClaveProdServ="43231500" Cantidad="1.0" ClaveUnidad="E48" Descripcion="{selectedCfdi.concepto}" ValorUnitario="{selectedCfdi.subtotal.toFixed(2)}" Importe="{selectedCfdi.subtotal.toFixed(2)}"<span className="text-blue-600">&gt;</span><br />
+                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-blue-600">&lt;cfdi:Impuestos&gt;</span><br />
+                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-blue-600">&lt;cfdi:Traslados&gt;</span><br />
+                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-blue-600">&lt;cfdi:Traslado</span> Base="{selectedCfdi.subtotal.toFixed(2)}" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="{selectedCfdi.iva.toFixed(2)}"<span className="text-blue-600">/&gt;</span><br />
+                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-blue-600">&lt;/cfdi:Traslados&gt;</span><br />
+                                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-blue-600">&lt;/cfdi:Impuestos&gt;</span><br />
+                                        &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-blue-600">&lt;/cfdi:Concepto&gt;</span><br />
+                                        &nbsp;&nbsp;<span className="text-blue-600">&lt;/cfdi:Conceptos&gt;</span><br />
+                                        <span className="text-blue-600">&lt;/cfdi:Comprobante&gt;</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4 text-xs font-sans">
+                                        <div>
+                                            <span className="text-slate-500 font-bold">Folio Fiscal (UUID):</span>
+                                            <div className="font-mono text-[10px] break-all bg-slate-100 p-2 rounded mt-1 font-semibold text-indigo-700">{selectedCfdi.uuid}</div>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-500 font-bold">Sello Digital SAT (Firma):</span>
+                                            <div className="font-mono text-[10px] break-all bg-slate-100 p-2 rounded mt-1">U3BzcmN2Yk1veGlaUzEyM0RldmVs...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
+                                    <button onClick={() => setSelectedCfdi(null)} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-4 rounded text-xs transition-all">
+                                        Cerrar Vista
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+
+        setTimeout(() => {
+            if (window.lucide) lucide.createIcons();
+        }, 1000);
+    </script>
+</body>
+</html>

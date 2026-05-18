@@ -124,6 +124,7 @@
 
         // --- FUNCIONES AUXILIARES PARA LECTURA DE XML SIN IMPORTAR NAMESPACE O CASING ---
         const getElementByLocalName = (parent, localName) => {
+            if (!parent) return null;
             const tags = parent.getElementsByTagName('*');
             for (let i = 0; i < tags.length; i++) {
                 const nodeLocalName = tags[i].localName || tags[i].tagName.split(':').pop();
@@ -136,6 +137,7 @@
 
         const getElementsByLocalName = (parent, localName) => {
             const result = [];
+            if (!parent) return result;
             const tags = parent.getElementsByTagName('*');
             for (let i = 0; i < tags.length; i++) {
                 const nodeLocalName = tags[i].localName || tags[i].tagName.split(':').pop();
@@ -152,7 +154,8 @@
             if (val !== null) return val;
             for (let i = 0; i < element.attributes.length; i++) {
                 const attr = element.attributes[i];
-                if (attr.name.toLowerCase() === attrName.toLowerCase()) {
+                const cleanName = attr.name.split(':').pop().toLowerCase();
+                if (cleanName === attrName.toLowerCase()) {
                     return attr.value;
                 }
             }
@@ -248,7 +251,7 @@
                 triggerToast('⚙️ Datos fiscales y de API guardados localmente.');
             };
 
-            // Comunicación HTTP genérica con el LLM seleccionado
+            // Comunicación HTTP genérica con el LLM seleccionado - CORREGIDAS LAS URLS MALFORMADAS
             const callAiAPI = async (prompt, systemPrompt = null, isJson = false, jsonSchema = null) => {
                 const provider = localStorage.getItem('cm_provider_v2') || 'google';
                 const key = localStorage.getItem('cm_key_v2') || '';
@@ -322,7 +325,9 @@
                     url = "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)";
                     headers = {
                         "Content-Type": "application/json",
-                        "Authorization": `Bearer ${key}`
+                        "Authorization": `Bearer ${key}`,
+                        "HTTP-Referer": window.location.origin,
+                        "X-Title": "ConciliaMax Local"
                     };
                     const messages = [];
                     if (systemPrompt) {
@@ -983,10 +988,10 @@ Pregunta del contribuyente: "${userText}"`;
             const handleAddAccount = (e) => {
                 e.preventDefault();
                 const codigo = e.target.codigo.value.trim();
-                const nombre = e.target.nombre.value.trim();
+                const textName = e.target.nombre.value.trim();
                 const tipo = e.target.tipo.value;
-                if (!codigo || !nombre) return;
-                setAccounts(prev => [...prev, { codigo, nombre, tipo }]);
+                if (!codigo || !textName) return;
+                setAccounts(prev => [...prev, { codigo, nombre: textName, tipo }]);
                 e.target.reset();
                 triggerToast('Cuenta registrada de forma exitosa.');
             };
@@ -1009,8 +1014,8 @@ Pregunta del contribuyente: "${userText}"`;
                                     <i data-lucide="calculator" className="w-6 h-6"></i>
                                 </div>
                                 <div>
-                                    <h1 className="text-xl font-bold tracking-tight">ConciliaMax <span className="text-emerald-400 font-mono text-sm border border-emerald-500/30 px-1.5 py-0.5 rounded">LOCAL</span></h1>
-                                    <p className="text-xs text-slate-400">Automatización contable libre de proxies y segura</p>
+                                    <h1 className="text-xl font-bold tracking-tight font-sans">ConciliaMax <span className="text-emerald-400 font-mono text-sm border border-emerald-500/30 px-1.5 py-0.5 rounded">LOCAL</span></h1>
+                                    <p className="text-xs text-slate-400 font-sans">Automatización contable libre de proxies y segura</p>
                                 </div>
                             </div>
                             
@@ -1019,8 +1024,8 @@ Pregunta del contribuyente: "${userText}"`;
                                     <div className="text-slate-400 font-sans">RFC Contribuyente Registrado</div>
                                     <div className="text-sm font-mono font-bold text-emerald-400">{contribuyenteRfc}</div>
                                 </div>
-                                <div className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <div className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 font-sans">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse font-sans"></span>
                                     Sesión Segura y Privada
                                 </div>
                             </div>
@@ -1093,7 +1098,7 @@ Pregunta del contribuyente: "${userText}"`;
                                             <button onClick={triggerSmartMatch} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2.5 rounded-lg font-bold text-xs transition-all flex items-center gap-2 shadow-lg">
                                                 <i data-lucide="sparkles" className="w-4 h-4"></i> Conciliar Inteligente
                                             </button>
-                                            <button onClick={exportToExcelConsolidated} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-bold text-xs transition-all flex items-center gap-2 shadow-lg">
+                                            <button onClick={exportToExcelConsolidated} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-bold text-xs transition-all flex items-center gap-2 shadow-lg font-sans">
                                                 <i data-lucide="download" className="w-4 h-4"></i> Descargar Reporte Excel
                                             </button>
                                         </div>
@@ -1147,7 +1152,7 @@ Pregunta del contribuyente: "${userText}"`;
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 font-sans">
+                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 font-sans font-sans">
                                         <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col justify-between space-y-3">
                                             <div className="space-y-1.5">
                                                 <div className="flex justify-between items-center">
@@ -1155,9 +1160,9 @@ Pregunta del contribuyente: "${userText}"`;
                                                     {contribuyenteRfc && contribuyenteRazon ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
                                                 </div>
                                                 <h4 className="font-bold text-xs text-slate-800">Pre-registro Fiscal</h4>
-                                                <p className="text-[11px] text-slate-500 leading-normal">Ingresa tu RFC y Razón Social en Configuración para guiar el clasificador inteligente de XMLs.</p>
+                                                <p className="text-[11px] text-slate-500 leading-normal font-sans">Ingresa tu RFC y Razón Social en Configuración para guiar el clasificador inteligente de XMLs.</p>
                                             </div>
-                                            <button onClick={() => setActiveTab('configuracion')} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left">Pre-registrar →</button>
+                                            <button onClick={() => setActiveTab('configuracion')} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left font-sans">Pre-registrar →</button>
                                         </div>
 
                                         <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col justify-between space-y-3">
@@ -1167,9 +1172,9 @@ Pregunta del contribuyente: "${userText}"`;
                                                     {cfdis.length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
                                                 </div>
                                                 <h4 className="font-bold text-xs text-slate-800">Importar XMLs</h4>
-                                                <p className="text-[11px] text-slate-500 leading-normal">Arrastra o selecciona tus archivos XML, carpetas o archivos ZIP en la pestaña de Importación.</p>
+                                                <p className="text-[11px] text-slate-500 leading-normal font-sans">Arrastra o selecciona tus archivos XML, carpetas o archivos ZIP en la pestaña de Importación.</p>
                                             </div>
-                                            <button onClick={() => { setActiveTab('sat'); setXmlSubTab('carga'); }} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left">Importar XML →</button>
+                                            <button onClick={() => { setActiveTab('sat'); setXmlSubTab('carga'); }} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left font-sans">Importar XML →</button>
                                         </div>
 
                                         <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col justify-between space-y-3">
@@ -1179,9 +1184,9 @@ Pregunta del contribuyente: "${userText}"`;
                                                     {bankMovements.length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
                                                 </div>
                                                 <h4 className="font-bold text-xs text-slate-800">Cargar Bancos</h4>
-                                                <p className="text-[11px] text-slate-500 leading-normal">Sube tu estado de cuenta bancario en CSV para obtener las transacciones del periodo.</p>
+                                                <p className="text-[11px] text-slate-500 leading-normal font-sans">Sube tu estado de cuenta bancario en CSV para obtener las transacciones del periodo.</p>
                                             </div>
-                                            <button onClick={() => setActiveTab('bancos')} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left">Subir Banco →</button>
+                                            <button onClick={() => setActiveTab('bancos')} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left font-sans">Subir Banco →</button>
                                         </div>
 
                                         <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col justify-between space-y-3">
@@ -1191,9 +1196,9 @@ Pregunta del contribuyente: "${userText}"`;
                                                     {Object.keys(matches).length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
                                                 </div>
                                                 <h4 className="font-bold text-xs text-slate-800">Conciliar Cuentas</h4>
-                                                <p className="text-[11px] text-slate-500 leading-normal">Usa nuestro algoritmo de conciliación inteligente para aparear depósitos y XMLs.</p>
+                                                <p className="text-[11px] text-slate-500 leading-normal font-sans font-sans">Usa nuestro algoritmo de conciliación inteligente para aparear depósitos y XMLs.</p>
                                             </div>
-                                            <button onClick={() => setActiveTab('conciliacion')} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left">Conciliar →</button>
+                                            <button onClick={() => setActiveTab('conciliacion')} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left font-sans">Conciliar →</button>
                                         </div>
 
                                         <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col justify-between space-y-3">
@@ -1203,9 +1208,9 @@ Pregunta del contribuyente: "${userText}"`;
                                                     <span className="w-2 h-2 rounded-full bg-slate-300"></span>
                                                 </div>
                                                 <h4 className="font-bold text-xs text-slate-800">Exportar Reportes</h4>
-                                                <p className="text-[11px] text-slate-500 leading-normal">Descarga tu libro consolidado en Excel con hojas independientes de cada concepto.</p>
+                                                <p className="text-[11px] text-slate-500 leading-normal font-sans">Descarga tu libro consolidado en Excel con hojas independientes de cada concepto.</p>
                                             </div>
-                                            <button onClick={exportToExcelConsolidated} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left">Bajar Excel →</button>
+                                            <button onClick={exportToExcelConsolidated} className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 text-left font-sans">Bajar Excel →</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1224,8 +1229,8 @@ Pregunta del contribuyente: "${userText}"`;
 
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-xs text-slate-700 font-sans">
                                         <div className="space-y-1 border-r border-slate-100 pr-4">
-                                            <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold">Empresa Activa</div>
-                                            <div className="font-bold text-slate-800 truncate">{contribuyenteRazon}</div>
+                                            <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Empresa Activa</div>
+                                            <div className="font-bold text-slate-800 truncate font-sans">{contribuyenteRazon}</div>
                                             <div className="font-mono text-emerald-600 font-bold">{contribuyenteRfc}</div>
                                         </div>
 
@@ -1246,9 +1251,9 @@ Pregunta del contribuyente: "${userText}"`;
                                         </div>
 
                                         <div className="space-y-1 pl-4">
-                                            <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold">Avance de Auditoría</div>
-                                            <div>Conciliados: <span className="font-bold text-slate-900">{Object.keys(matches).length} enlazados</span></div>
-                                            <div className="mt-2">
+                                            <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Avance de Auditoría</div>
+                                            <div className="font-sans">Conciliados: <span className="font-bold text-slate-900">{Object.keys(matches).length} enlazados</span></div>
+                                            <div className="mt-2 font-sans">
                                                 <button onClick={() => { setCfdis([]); setBankMovements([]); setMatches([]); triggerToast('🧹 Datos de sesión eliminados.'); }} className="text-rose-600 hover:text-rose-700 font-bold text-[11px] underline">Vaciar Memoria</button>
                                             </div>
                                         </div>
@@ -1260,7 +1265,7 @@ Pregunta del contribuyente: "${userText}"`;
                         {/* TAB: IMPORTACIÓN XML */}
                         {activeTab === 'sat' && (
                             <div className="space-y-6">
-                                <div className="flex border-b border-slate-200 overflow-x-auto font-sans">
+                                <div className="flex border-b border-slate-200 overflow-x-auto font-sans font-sans">
                                     <button onClick={() => setXmlSubTab('carga')} className={`py-2.5 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${xmlSubTab === 'carga' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>
                                         <i data-lucide="upload" className="w-4 h-4"></i> Cargar Archivos locales
                                     </button>
@@ -1321,10 +1326,10 @@ Pregunta del contribuyente: "${userText}"`;
                                                 <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
                                                     <h3 className="text-base font-bold">Listado de Comprobantes CFDI Cargados</h3>
                                                     <div className="flex gap-2">
-                                                        <button onClick={exportToExcelConsolidated} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1">
-                                                            <i data-lucide="download" className="w-3.5 h-3.5"></i> Exportar a Excel
+                                                        <button onClick={exportToExcelConsolidated} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1 font-sans">
+                                                            <i data-lucide="download" className="w-3.5 h-3.5 font-sans"></i> Exportar a Excel
                                                         </button>
-                                                        <div className="flex gap-1">
+                                                        <div className="flex gap-1 font-sans">
                                                             {['Todos', 'Emitido', 'Recibido', 'Nómina', 'Pago'].map(type => (
                                                                 <button key={type} onClick={() => setCfdiTypeFilter(type)} className={`px-2.5 py-1 rounded text-xs font-semibold ${cfdiTypeFilter === type ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{type}</button>
                                                             ))}
@@ -1372,7 +1377,7 @@ Pregunta del contribuyente: "${userText}"`;
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="text-center py-12 text-slate-400 italic">
+                                            <div className="text-center py-12 text-slate-400 italic font-sans">
                                                 <i data-lucide="folder-open" className="w-12 h-12 text-slate-300 mx-auto mb-2"></i>
                                                 <p className="font-sans text-slate-600 text-sm font-semibold">No hay ningún XML cargado en la memoria de sesión.</p>
                                                 <p className="font-sans text-slate-400 text-xs mt-1">Sube tus archivos de comprobantes en la pestaña "Cargar Archivos locales".</p>
@@ -1398,8 +1403,8 @@ Pregunta del contribuyente: "${userText}"`;
                                         <input type="file" accept=".csv, .xls, .xlsx" onChange={handleBankUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                         <div className="flex flex-col items-center justify-center">
                                             <i data-lucide="file-up" className="w-10 h-10 text-slate-400 group-hover:scale-110 transition-transform mb-2"></i>
-                                            <span className="text-sm font-bold text-slate-700">Arrastra tu estado de cuenta aquí o haz clic para subir</span>
-                                            <span className="text-xs text-slate-400 mt-1">Formatos admitidos: .CSV, .XLS, .XLSX</span>
+                                            <span className="text-sm font-bold text-slate-700 font-sans">Arrastra tu estado de cuenta aquí o haz clic para subir</span>
+                                            <span className="text-xs text-slate-400 mt-1 font-sans">Formatos admitidos: .CSV, .XLS, .XLSX</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1508,7 +1513,7 @@ Pregunta del contribuyente: "${userText}"`;
                                                                     <div className="bg-amber-50 border border-dashed border-amber-300 p-1.5 rounded text-[10px] space-y-1 font-sans">
                                                                         <span className="font-bold block text-amber-800 font-sans">Sugerido:</span>
                                                                         <span className="block truncate max-w-[150px] font-sans">{autoSuggestedCfdi.nombreEmisor}</span>
-                                                                        <button onClick={() => linkManualMatch(mov.id, autoSuggestedCfdi.uuid)} className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded text-[9px]">Vincular</button>
+                                                                        <button onClick={() => linkManualMatch(mov.id, autoSuggestedCfdi.uuid)} className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded text-[9px] font-sans">Vincular</button>
                                                                     </div>
                                                                 ) : (
                                                                     <select onChange={(e) => linkManualMatch(mov.id, e.target.value)} className="text-[10px] bg-slate-50 border border-slate-200 rounded p-1 max-w-[150px] outline-none">
@@ -1526,7 +1531,7 @@ Pregunta del contribuyente: "${userText}"`;
                                                                     <div className="bg-indigo-50 border border-indigo-200 p-2 rounded text-[10px] space-y-1 font-sans">
                                                                         <div className="font-bold text-indigo-900">{isSug.codigoSugerido} - {isSug.nombreSugerido}</div>
                                                                         <p className="text-[9px] text-slate-500 italic">"{isSug.justificacion}"</p>
-                                                                        <button onClick={() => applyAiAccountSuggestion(mov.id, isSug.codigoSugerido)} className="mt-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-0.5 px-2 rounded text-[9px] transition-colors block w-full">Asignar Cuenta</button>
+                                                                        <button onClick={() => applyAiAccountSuggestion(mov.id, isSug.codigoSugerido)} className="mt-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-0.5 px-2 rounded text-[9px] transition-colors block w-full font-sans">Asignar Cuenta</button>
                                                                         <span className="text-[9px] font-bold text-emerald-600 block">Confianza: {isSug.confianza}%</span>
                                                                     </div>
                                                                 ) : (
@@ -1675,7 +1680,7 @@ Pregunta del contribuyente: "${userText}"`;
 
                                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col h-[650px] font-sans">
                                     <div className="mb-4 flex items-center justify-between">
-                                        <h3 className="font-bold">Mapeo de Cuentas Contables</h3>
+                                        <h3 className="font-bold font-sans">Mapeo de Cuentas Contables</h3>
                                         <input type="text" className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none w-64" placeholder="Buscar..." value={accountSearchQuery} onChange={(e) => setAccountSearchQuery(e.target.value)} />
                                     </div>
                                     <div className="flex-1 overflow-y-auto border border-slate-100 rounded-lg text-xs">
@@ -1685,7 +1690,7 @@ Pregunta del contribuyente: "${userText}"`;
                                                     <th className="py-2.5 px-3">Código</th>
                                                     <th className="px-3">Tipo</th>
                                                     <th className="px-3">Nombre</th>
-                                                    <th className="text-center">Acción</th>
+                                                    <th className="text-center font-sans">Acción</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 font-mono">
@@ -1700,7 +1705,7 @@ Pregunta del contribuyente: "${userText}"`;
                                                         <td className="px-3 font-sans text-slate-600 font-semibold">{acc.nombre}</td>
                                                         <td className="text-center font-sans">
                                                             <button onClick={() => setAccounts(accounts.filter(a => a.codigo !== acc.codigo))} className="text-slate-400 hover:text-rose-600">
-                                                                <i data-lucide="trash-2" className="w-4 h-4 inline"></i>
+                                                                <i data-lucide="trash-2" className="w-4 h-4 inline font-sans"></i>
                                                             </button>
                                                         </td>
                                                     </tr>
@@ -1723,7 +1728,7 @@ Pregunta del contribuyente: "${userText}"`;
                                             </h3>
                                             <p className="text-xs text-slate-500 font-sans">Detecta omisiones de facturas y discrepancias en tu flujo financiero.</p>
                                         </div>
-                                        <button onClick={handleGenerateFiscalReport} disabled={loadingAiReport} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors">
+                                        <button onClick={handleGenerateFiscalReport} disabled={loadingAiReport} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors font-sans">
                                             {loadingAiReport ? 'Generando...' : 'Generar Auditoría'}
                                         </button>
                                     </div>
@@ -1748,16 +1753,16 @@ Pregunta del contribuyente: "${userText}"`;
 
                                 <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col h-[650px] font-sans">
                                     <div className="border-b border-slate-100 pb-4 mb-4 shrink-0">
-                                        <h3 className="font-bold flex items-center gap-1.5"><i data-lucide="messages-square" className="text-indigo-500 w-5 h-5"></i> Consultor Fiscal SAT</h3>
-                                        <p className="text-xs text-slate-500">Resuelve dudas sobre impuestos de tus movimientos del periodo.</p>
+                                        <h3 className="font-bold flex items-center gap-1.5 font-sans"><i data-lucide="messages-square" className="text-indigo-500 w-5 h-5 font-sans"></i> Consultor Fiscal SAT</h3>
+                                        <p className="text-xs text-slate-500 font-sans">Resuelve dudas sobre impuestos de tus movimientos del periodo.</p>
                                     </div>
 
                                     <div className="flex-1 overflow-y-auto space-y-4 p-4 bg-slate-50 rounded-lg border border-slate-200 mb-4 flex flex-col">
                                         {chatMessages.map((msg, index) => (
                                             <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                                                 <div className={`max-w-[85%] p-3.5 rounded-xl text-xs leading-relaxed ${msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-250 shadow-sm'}`}>
-                                                    <div className="font-bold text-[9px] text-slate-400 mb-1 uppercase tracking-wider">{msg.sender === 'user' ? 'Tú (Contribuyente)' : '✨ Consultor Contable IA'}</div>
-                                                    <div className="whitespace-pre-wrap">{msg.text}</div>
+                                                    <div className="font-bold text-[9px] text-slate-400 mb-1 uppercase tracking-wider font-sans">{msg.sender === 'user' ? 'Tú (Contribuyente)' : '✨ Consultor Contable IA'}</div>
+                                                    <div className="whitespace-pre-wrap font-sans">{msg.text}</div>
                                                 </div>
                                             </div>
                                         ))}
@@ -1770,8 +1775,8 @@ Pregunta del contribuyente: "${userText}"`;
                                     </div>
 
                                     <form onSubmit={handleSendChatMessage} className="flex gap-2 shrink-0">
-                                        <input type="text" className="flex-1 bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 text-xs outline-none" placeholder="Ej: ¿Un egreso sin XML es deducible?" value={chatInput} onChange={(e) => setChatInput(e.target.value)} disabled={loadingChat} />
-                                        <button type="submit" disabled={loadingChat || !chatInput.trim()} className="bg-slate-900 text-white py-2 px-4 rounded-lg text-xs font-bold hover:bg-slate-800">Enviar</button>
+                                        <input type="text" className="flex-1 bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 text-xs outline-none font-sans" placeholder="Ej: ¿Un egreso sin XML es deducible?" value={chatInput} onChange={(e) => setChatInput(e.target.value)} disabled={loadingChat} />
+                                        <button type="submit" disabled={loadingChat || !chatInput.trim()} className="bg-slate-900 text-white py-2 px-4 rounded-lg text-xs font-bold hover:bg-slate-800 font-sans">Enviar</button>
                                     </form>
                                 </div>
                             </div>
@@ -1786,8 +1791,8 @@ Pregunta del contribuyente: "${userText}"`;
                                             <i data-lucide="settings" className="w-5 h-5"></i>
                                         </div>
                                         <div>
-                                            <h3 className="font-bold">Configuración de ConciliaMax</h3>
-                                            <p className="text-xs text-slate-300">Pre-registra tus datos fiscales de la cuenta y configura tus APIs de Inteligencia Artificial.</p>
+                                            <h3 className="font-bold font-sans">Configuración de ConciliaMax</h3>
+                                            <p className="text-xs text-slate-300 font-sans">Pre-registra tus datos fiscales de la cuenta y configura tus APIs de Inteligencia Artificial.</p>
                                         </div>
                                     </div>
                                     <span className="bg-slate-800 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-[10px] rounded-lg font-mono font-bold uppercase">
@@ -1822,12 +1827,12 @@ Pregunta del contribuyente: "${userText}"`;
                                                 />
                                             </div>
                                         </div>
-                                        <p className="text-[10px] text-slate-400 italic">Establece el RFC y nombre con el cual tu e.firma debe contrastarse de forma obligatoria.</p>
+                                        <p className="text-[10px] text-slate-400 italic font-sans">Establece el RFC y nombre con el cual tu e.firma debe contrastarse de forma obligatoria.</p>
                                     </div>
 
                                     <form onSubmit={handleSaveConfig} className="space-y-4 text-xs font-sans">
                                         <div>
-                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase">Proveedor LLM</label>
+                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase font-sans">Proveedor LLM</label>
                                             <select 
                                                 value={apiProvider} 
                                                 onChange={(e) => {
@@ -1836,7 +1841,7 @@ Pregunta del contribuyente: "${userText}"`;
                                                     const defaultModel = PROVIDER_MODELS[prov][0].value;
                                                     setApiModel(defaultModel);
                                                 }} 
-                                                className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold"
+                                                className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold font-sans"
                                             >
                                                 <option value="google">Google AI Studio (Gemini)</option>
                                                 <option value="anthropic">Anthropic Console (Claude)</option>
@@ -1846,7 +1851,7 @@ Pregunta del contribuyente: "${userText}"`;
                                         </div>
 
                                         <div>
-                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase">API Key del Proveedor</label>
+                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase font-sans">API Key del Proveedor</label>
                                             <div className="relative font-mono">
                                                 <input 
                                                     type={showApiKey ? "text" : "password"} 
@@ -1867,11 +1872,11 @@ Pregunta del contribuyente: "${userText}"`;
                                         </div>
 
                                         <div>
-                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase">Modelo de IA Seleccionado</label>
+                                            <label className="block text-slate-500 font-bold mb-1.5 uppercase font-sans">Modelo de IA Seleccionado</label>
                                             <select 
                                                 value={apiModel} 
                                                 onChange={(e) => setApiModel(e.target.value)} 
-                                                className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold"
+                                                className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2 px-3 outline-none font-semibold font-sans"
                                             >
                                                 {(PROVIDER_MODELS[apiProvider] || PROVIDER_MODELS.google).map(model => (
                                                     <option key={model.value} value={model.value}>{model.label}</option>
@@ -1879,8 +1884,8 @@ Pregunta del contribuyente: "${userText}"`;
                                             </select>
                                         </div>
 
-                                        <div className="flex gap-2 pt-4 border-t border-slate-100 flex-wrap">
-                                            <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-2 px-5 rounded-lg">Guardar Configuración</button>
+                                        <div className="flex gap-2 pt-4 border-t border-slate-100 flex-wrap font-sans">
+                                            <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-2 px-5 rounded-lg font-sans">Guardar Configuración</button>
                                             <button type="button" onClick={handleTestConnection} disabled={testingConnection} className="border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-2 px-5 rounded-lg font-sans">
                                                 {testingConnection ? 'Probando...' : 'Probar Conexión'}
                                             </button>
@@ -1904,9 +1909,9 @@ Pregunta del contribuyente: "${userText}"`;
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
                             <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden">
                                 <div className="bg-slate-950 text-white p-4 flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 font-mono">
                                         <i data-lucide="file-code" className="text-emerald-400 w-5 h-5"></i>
-                                        <h3 className="font-bold text-sm font-mono">Visor XML CFDI 4.0</h3>
+                                        <h3 className="font-bold text-sm">Visor XML CFDI 4.0</h3>
                                     </div>
                                     <button onClick={() => setSelectedCfdi(null)} className="text-slate-400 hover:text-white transition-colors">
                                         <i data-lucide="x" className="w-5 h-5"></i>
@@ -1924,7 +1929,7 @@ Pregunta del contribuyente: "${userText}"`;
                                     </div>
                                 </div>
                                 <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
-                                    <button onClick={() => setSelectedCfdi(null)} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-4 rounded text-xs transition-all font-sans font-sans">
+                                    <button onClick={() => setSelectedCfdi(null)} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-4 rounded text-xs transition-all font-sans">
                                         Cerrar Vista
                                     </button>
                                 </div>

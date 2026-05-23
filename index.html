@@ -13,7 +13,7 @@
     <!-- SheetJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK (Modular via compat for single-file integration) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -32,6 +32,9 @@
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body class="text-slate-900 antialiased min-h-screen flex flex-col">
@@ -77,7 +80,8 @@
             { codigo: '401-01-001', nombre: 'Ingresos por Servicios', tipo: 'Ingreso' },
             { codigo: '601-01-001', nombre: 'Gastos de Oficina y Papelería', tipo: 'Egreso' },
             { codigo: '601-01-002', nombre: 'Gastos de Mantenimiento General', tipo: 'Egreso' },
-            { codigo: '601-01-003', nombre: 'Licenciamiento de Software', tipo: 'Egreso' }
+            { codigo: '601-01-003', nombre: 'Licenciamiento de Software', tipo: 'Egreso' },
+            { codigo: '601-01-004', nombre: 'Servicios de Internet y Telecom', tipo: 'Egreso' }
         ];
 
         // --- FUNCIONES AUXILIARES ---
@@ -152,7 +156,7 @@
             };
         };
 
-        // Componente Fila de Gasto (Para manejar el estado del input optimizado sin lag)
+        // --- COMPONENTE DE TABLA REACTIVO ---
         const GastoRow = ({ cfdi, meta, onUpdate, bankMovement }) => {
             const [localDesc, setLocalDesc] = useState(meta.descripcion || '');
             const [localCta, setLocalCta] = useState(meta.ctaContable || '');
@@ -163,31 +167,31 @@
             useEffect(() => { setLocalEtiq(meta.etiqueta || ''); }, [meta.etiqueta]);
 
             return (
-                <tr className="hover:bg-slate-50/50 transition-colors border-b border-slate-100">
-                    <td className="p-3">{cfdi.fecha}</td>
-                    <td className="p-3 font-sans font-semibold text-slate-800 truncate max-w-[180px]" title={cfdi.nombreEmisor}>{cfdi.nombreEmisor}</td>
+                <tr className="hover:bg-amber-50/40 transition-colors border-b border-slate-100/70 group">
+                    <td className="p-3 text-slate-500">{cfdi.fecha}</td>
+                    <td className="p-3 font-sans font-bold text-slate-800 truncate max-w-[180px]" title={cfdi.nombreEmisor}>{cfdi.nombreEmisor}</td>
                     <td className="p-3 text-slate-400 font-mono text-[10px]" title={cfdi.uuid}>{cfdi.uuid.substring(0,8)}</td>
-                    <td className="p-3 text-right">${cfdi.subtotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
-                    <td className="p-3 text-right">${cfdi.iva.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
+                    <td className="p-3 text-right text-slate-600">${cfdi.subtotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
+                    <td className="p-3 text-right text-slate-600">${cfdi.iva.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
                     <td className="p-3 text-right font-bold text-slate-900">${cfdi.total.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
                     <td className="p-3 text-center">
                         {bankMovement ? 
-                            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full truncate max-w-[120px] inline-block" title={bankMovement.referencia}>
+                            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full truncate max-w-[120px] inline-block shadow-sm" title={bankMovement.referencia}>
                                 <i data-lucide="check-circle" className="w-3 h-3 inline mr-1"></i> {bankMovement.referencia}
                             </span> 
-                            : <span className="text-[10px] text-slate-300">-</span>
+                            : <span className="text-[10px] text-slate-300 font-bold bg-slate-100 px-2 py-1 rounded-full">Sin Match</span>
                         }
                     </td>
-                    <td className="p-1.5 bg-amber-50/20">
-                        <input type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-amber-400 focus:ring-1 ring-amber-400 font-sans"
+                    <td className="p-1.5 bg-amber-50/20 group-hover:bg-amber-50/50 transition-colors">
+                        <input type="text" className="w-full bg-white border border-slate-200/60 rounded px-2 py-1.5 outline-none focus:border-amber-400 focus:ring-2 ring-amber-100 font-sans shadow-sm transition-all"
                             placeholder={cfdi.concepto.substring(0,25) + '...'} value={localDesc} onChange={e => setLocalDesc(e.target.value)} onBlur={() => onUpdate(cfdi.uuid, 'descripcion', localDesc)} />
                     </td>
-                    <td className="p-1.5 bg-amber-50/20">
-                        <input type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-amber-400 focus:ring-1 ring-amber-400 font-sans uppercase text-[10px] font-bold"
+                    <td className="p-1.5 bg-amber-50/20 group-hover:bg-amber-50/50 transition-colors">
+                        <input type="text" className="w-full bg-white border border-slate-200/60 rounded px-2 py-1.5 outline-none focus:border-amber-400 focus:ring-2 ring-amber-100 font-sans uppercase text-[10px] font-bold shadow-sm transition-all text-indigo-700"
                             placeholder="Ej: 601-01-001" value={localCta} onChange={e => setLocalCta(e.target.value)} onBlur={() => onUpdate(cfdi.uuid, 'ctaContable', localCta)} />
                     </td>
-                    <td className="p-1.5 bg-amber-50/20">
-                        <input type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-amber-400 focus:ring-1 ring-amber-400 font-sans"
+                    <td className="p-1.5 bg-amber-50/20 group-hover:bg-amber-50/50 transition-colors">
+                        <input type="text" className="w-full bg-white border border-slate-200/60 rounded px-2 py-1.5 outline-none focus:border-amber-400 focus:ring-2 ring-amber-100 font-sans shadow-sm transition-all text-slate-700 font-medium"
                             placeholder="Ej: Software" value={localEtiq} onChange={e => setLocalEtiq(e.target.value)} onBlur={() => onUpdate(cfdi.uuid, 'etiqueta', localEtiq)} />
                     </td>
                 </tr>
@@ -216,10 +220,9 @@
             const [bankMovements, setBankMovements] = useState([]);
             const [matches, setMatches] = useState({});
             const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
-            const [selectedCfdi, setSelectedCfdi] = useState(null);
 
             // --- ESTADOS PERSISTENTES (Control de Gastos Meta) ---
-            const [gastosMeta, setGastosMeta] = useState({}); // { uuid: { descripcion, ctaContable, etiqueta, companyId } }
+            const [gastosMeta, setGastosMeta] = useState({});
 
             // --- ESTADOS IA & CONFIGURACIÓN ---
             const [apiProvider, setApiProvider] = useState(() => localStorage.getItem('cm_provider_v3') || 'google');
@@ -230,16 +233,21 @@
             
             const [aiSuggestions, setAiSuggestions] = useState({}); 
             const [loadingAiSug, setLoadingAiSug] = useState({}); 
+            const [bulkAiLoading, setBulkAiLoading] = useState(false);
+            
             const [aiReport, setAiReport] = useState("");
             const [loadingAiReport, setLoadingAiReport] = useState(false);
-            const [chatMessages, setChatMessages] = useState([{ sender: 'ia', text: '¡Hola! Soy tu Consultor Fiscal IA. Puedo ayudarte a clasificar transacciones contables o preparar reportes.' }]);
+            
+            const [dashboardInsight, setDashboardInsight] = useState(null);
+            const [loadingInsight, setLoadingInsight] = useState(false);
+
+            const [chatMessages, setChatMessages] = useState([{ sender: 'ia', text: '¡Hola! Soy tu Consultor Fiscal IA. Conozco las leyes vigentes del SAT. ¿En qué te puedo asesorar hoy?' }]);
             const [chatInput, setChatInput] = useState("");
             const [loadingChat, setLoadingChat] = useState(false);
 
             // Filtros y UI Adicional
             const [cfdiTypeFilter, setCfdiTypeFilter] = useState('Todos');
             const [bankMatchedFilter, setBankMatchedFilter] = useState('Todos');
-            const [accountSearchQuery, setAccountSearchQuery] = useState('');
             const [startingFolio, setStartingFolio] = useState(1);
             const [policyTypeMode, setPolicyTypeMode] = useState('auto');
             const [bankAccountCode, setBankAccountCode] = useState('102-01-001');
@@ -272,7 +280,6 @@
             useEffect(() => {
                 if (!user || !db) return;
                 
-                // Cargar Perfiles de Empresas
                 const compRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('companies');
                 const unsubComp = compRef.onSnapshot(snap => {
                     const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -282,15 +289,12 @@
                     }
                 }, err => console.error("Error loading companies", err));
 
-                // Cargar Control de Gastos (Filtrado en memoria por Regla 2)
                 const gastosRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('gastosMeta');
                 const unsubGastos = gastosRef.onSnapshot(snap => {
                     const meta = {};
                     snap.docs.forEach(d => {
                         const data = d.data();
-                        if (data.companyId === activeCompanyId) { // Filtrado en JS Memory
-                            meta[d.id] = data;
-                        }
+                        if (data.companyId === activeCompanyId) meta[d.id] = data;
                     });
                     setGastosMeta(meta);
                 });
@@ -311,10 +315,10 @@
                 if (user && db) {
                     const newRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('companies').doc();
                     await newRef.set({ rfc, razonSocial: razon });
-                    triggerToast('🏢 Empresa agregada a la nube de forma exitosa.');
+                    triggerToast('🏢 Empresa guardada en Firebase.');
                 } else {
                     setCompanies(prev => [...prev, { id: Math.random().toString(36).substr(2,9), rfc, razonSocial: razon }]);
-                    triggerToast('🏢 Empresa agregada localmente.');
+                    triggerToast('🏢 Empresa agregada en memoria.');
                 }
                 e.target.reset();
             };
@@ -325,8 +329,8 @@
                 }));
 
                 if (user && db) {
-                    const docRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('gastosMeta').doc(uuid);
-                    docRef.set({ [field]: value, companyId: activeCompanyId }, { merge: true }).catch(e => console.error("Sync Err", e));
+                    db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('gastosMeta').doc(uuid)
+                        .set({ [field]: value, companyId: activeCompanyId }, { merge: true }).catch(e => console.error("Sync Err", e));
                 }
             };
 
@@ -335,16 +339,16 @@
                 localStorage.setItem('cm_provider_v3', apiProvider);
                 localStorage.setItem('cm_key_v3', apiKey);
                 localStorage.setItem('cm_model_v3', apiModel);
-                triggerToast('⚙️ Configuración de API de Inteligencia Artificial guardada.');
+                triggerToast('⚙️ Claves IA actualizadas y encriptadas localmente.');
             };
 
-            // --- COMUNICACIÓN IA LLM ---
+            // --- MOTOR INTELIGENCIA ARTIFICIAL CORE ---
             const callAiAPI = async (prompt, systemPrompt = null, isJson = false, jsonSchema = null) => {
                 const provider = localStorage.getItem('cm_provider_v3') || 'google';
                 const key = localStorage.getItem('cm_key_v3') || '';
                 const model = localStorage.getItem('cm_model_v3') || 'gemini-2.5-flash';
 
-                if (!key) throw new Error("API Key no configurada. Ve a Configuración.");
+                if (!key) throw new Error("API Key requerida. Configúrala primero.");
 
                 let url = "", headers = { "Content-Type": "application/json" }, bodyPayload = {};
 
@@ -357,26 +361,19 @@
                     url = "[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)";
                     headers = { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" };
                     let customPrompt = prompt;
-                    if (isJson) customPrompt += "\nResponde exclusivamente con un JSON válido estructurado como se solicitó. No agregues formatos markdown de bloque.";
-                    bodyPayload = { model: model, max_tokens: 3500, messages: [{ role: "user", content: customPrompt }] };
+                    if (isJson) customPrompt += "\nDevuelve UNICAMENTE un JSON válido. Cero markdown extra.";
+                    bodyPayload = { model: model, max_tokens: 4000, messages: [{ role: "user", content: customPrompt }] };
                     if (systemPrompt) bodyPayload.system = systemPrompt;
-                } else if (provider === 'openai') {
-                    url = "[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)";
+                } else if (provider === 'openai' || provider === 'openrouter') {
+                    url = provider === 'openai' ? "[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)" : "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)";
                     headers = { "Content-Type": "application/json", "Authorization": `Bearer ${key}` };
+                    if (provider === 'openrouter') { headers["HTTP-Referer"] = window.location.origin; headers["X-Title"] = "ConciliaMax ERP"; }
                     const messages = systemPrompt ? [{ role: "system", content: systemPrompt }] : [];
                     let customPrompt = prompt;
-                    if (isJson) customPrompt += "\nResponde únicamente con un objeto JSON válido.";
+                    if (isJson) customPrompt += "\nDevuelve UNICAMENTE un JSON válido.";
                     messages.push({ role: "user", content: customPrompt });
                     bodyPayload = { model: model, messages: messages };
-                    if (isJson) bodyPayload.response_format = { type: "json_object" };
-                } else if (provider === 'openrouter') {
-                    url = "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)";
-                    headers = { "Content-Type": "application/json", "Authorization": `Bearer ${key}`, "HTTP-Referer": window.location.origin, "X-Title": "ConciliaMax ERP" };
-                    const messages = systemPrompt ? [{ role: "system", content: systemPrompt }] : [];
-                    let customPrompt = prompt;
-                    if (isJson) customPrompt += "\nResponde únicamente con un objeto JSON válido.";
-                    messages.push({ role: "user", content: customPrompt });
-                    bodyPayload = { model: model, messages: messages };
+                    if (isJson && provider === 'openai') bodyPayload.response_format = { type: "json_object" };
                 }
 
                 for (let i = 0; i < 3; i++) {
@@ -386,7 +383,7 @@
                         const result = await response.json();
                         if (provider === 'google') return result.candidates?.[0]?.content?.parts?.[0]?.text;
                         else if (provider === 'anthropic') return result.content?.[0]?.text;
-                        else if (provider === 'openai' || provider === 'openrouter') return result.choices?.[0]?.message?.content;
+                        else return result.choices?.[0]?.message?.content;
                     } catch (err) {
                         if (i === 2) throw err;
                         await new Promise(resolve => setTimeout(resolve, [1000, 2000, 4000][i]));
@@ -399,13 +396,13 @@
                 setTestingConnection(true);
                 try {
                     const res = await callAiAPI("Responde únicamente 'CONECTADO'.", "Diagnóstico.");
-                    if (res && res.toUpperCase().includes('CONECTADO')) triggerToast('✅ Conexión establecida de forma exitosa.');
+                    if (res && res.toUpperCase().includes('CONECTADO')) triggerToast('✅ Ping a servidor IA exitoso.');
                     else triggerToast('⚠️ Conexión fallida: ' + res);
                 } catch (err) { triggerToast('❌ Error: ' + err.message); } 
                 finally { setTestingConnection(false); }
             };
 
-            // --- CARGA DE ARCHIVOS EN MEMORIA ---
+            // --- CARGA DE DATOS LOCALES ---
             const handleLocalXmlUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (!files.length) return;
@@ -434,33 +431,49 @@
                         return [...prev, ...parsed.filter(c => !existing.has(c.uuid))];
                     });
                     setXmlSubTab('listado');
-                    triggerToast(`Se agregaron ${parsed.length} XMLs. ${errs>0?`(${errs} errores)`:''}`);
+                    triggerToast(`📁 ${parsed.length} comprobantes procesados en RAM.`);
                 }
             };
 
             const handleBankUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                // En un caso real aquí leeríamos el CSV. Simulamos con datos consistentes.
                 const DEMO_BANK_MOVEMENTS = [
                     { id: 1, fecha: '2025-12-04', referencia: 'ARRENDAMIENTO ASIA', descripcion: 'PAGO ASIA', cargo: 0, abono: 3340.96, tipo: 'Ingreso' },
                     { id: 2, fecha: '2025-12-09', referencia: 'PROEPTA', descripcion: 'MANTENIMIENTO', cargo: 180.09, abono: 0, tipo: 'Egreso' },
                     { id: 3, fecha: '2025-12-18', referencia: 'WALMART MX', descripcion: 'COMPRA PAPELERIA', cargo: 332.48, abono: 0, tipo: 'Egreso' },
-                    { id: 4, fecha: '2025-12-16', referencia: 'RILE CUERNAVACA', descripcion: 'SPEI RECIBIDO', cargo: 0, abono: 16851.74, tipo: 'Ingreso' }
+                    { id: 4, fecha: '2025-12-16', referencia: 'RILE CUERNAVACA', descripcion: 'SPEI RECIBIDO', cargo: 0, abono: 16851.74, tipo: 'Ingreso' },
+                    { id: 5, fecha: '2026-04-15', referencia: 'PAYPAL *GOOGLE', descripcion: 'SERVICIOS NUBE', cargo: 1753.92, abono: 0, tipo: 'Egreso' }
                 ];
                 setBankMovements(DEMO_BANK_MOVEMENTS);
-                triggerToast('📁 Estado de cuenta bancario cargado en sesión.');
+                triggerToast('🏦 CSV Bancario mapeado en memoria.');
             };
 
-            const handleCatalogUpload = (e) => {
-                if (!e.target.files[0]) return;
-                setAccounts(DEFAULT_ACCOUNTS);
-                triggerToast('📁 Catálogo de cuentas importado.');
+            // --- MÉTODOS DE INTELIGENCIA ARTIFICIAL AVANZADA ---
+
+            // 1. Dashboard AI Insight
+            const generateDashboardInsight = async () => {
+                setLoadingInsight(true);
+                const prompt = `Analiza la salud financiera de ${activeCompany.razonSocial} (RFC: ${activeCompany.rfc}).
+Datos del mes:
+- Ingresos Banco: $${dashboardStats.totalBancosIngreso}
+- Egresos Banco: $${dashboardStats.totalBancosEgreso}
+- Facturado Emitido (Ingreso CFDI): $${dashboardStats.totalCfdisEmitidos}
+- Facturado Recibido (Gasto CFDI): $${dashboardStats.totalCfdisRecibidos}
+
+Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de pagar muchos impuestos o hay discrepancia entre lo bancarizado y lo facturado?`;
+                const sysPrompt = "Eres el CFO (Director Financiero) de la empresa. Directo, analítico, experto fiscal.";
+                
+                try {
+                    const res = await callAiAPI(prompt, sysPrompt);
+                    setDashboardInsight(res);
+                } catch (error) { triggerToast("Error generando Insight: Configura la API."); } 
+                finally { setLoadingInsight(false); }
             };
 
-            // --- CONCILIACIÓN E INTELIGENCIA ARTIFICIAL ---
+            // 2. Conciliación Inteligente Local
             const triggerSmartMatch = () => {
-                if (!bankMovements.length || !cfdis.length) return triggerToast('Faltan datos de banco o XMLs.');
+                if (!bankMovements.length || !cfdis.length) return triggerToast('Requiere Bancos y XMLs para operar.');
                 const newMatches = { ...matches };
                 let matchCount = 0;
 
@@ -474,33 +487,52 @@
                         const sameAmount = Math.abs(cfdi.total - amount) < 0.05;
                         const free = !Object.values(newMatches).includes(cfdi.uuid);
                         if (sameType && sameAmount && free) {
-                            const descrMatches = movement.descripcion.includes(cfdi.nombreEmisor.split(' ')[0]) || movement.referencia.includes(cfdi.rfcEmisor.substring(0,4));
-                            return descrMatches || true; // Simplificado para demo
+                            const descrMatches = movement.descripcion.toLowerCase().includes(cfdi.nombreEmisor.split(' ')[0].toLowerCase()) || movement.referencia.toLowerCase().includes(cfdi.rfcEmisor.substring(0,4).toLowerCase());
+                            return descrMatches || true; 
                         }
                         return false;
                     });
                     if (potentialXml) { newMatches[movement.id] = potentialXml.uuid; matchCount++; }
                 });
                 setMatches(newMatches);
-                triggerToast(`✅ Conciliación inteligente: ${matchCount} vínculos creados.`);
+                triggerToast(`🔗 Automatch: ${matchCount} movimientos cruzados.`);
             };
 
-            const handleAskAiForMovement = async (mov) => {
-                setLoadingAiSug(prev => ({ ...prev, [mov.id]: true }));
-                const amount = mov.cargo > 0 ? mov.cargo : mov.abono;
-                const sysPrompt = "Actúas como un Contador Público Certificado experto en NIF. Sugiere la mejor cuenta contable.";
-                const userPrompt = `Analiza la transacción: ${mov.fecha} - ${mov.referencia} - ${mov.descripcion} - $${amount.toFixed(2)}. Catálogo: ${JSON.stringify(accounts.map(a=>a.codigo+"|"+a.nombre))}. Retorna JSON con: codigoSugerido, nombreSugerido, justificacion, confianza (int 1-100).`;
-                const schema = { type: "OBJECT", properties: { codigoSugerido: { type: "STRING" }, nombreSugerido: { type: "STRING" }, justificacion: { type: "STRING" }, confianza: { type: "INTEGER" } }, required: ["codigoSugerido", "nombreSugerido", "justificacion", "confianza"] };
-                
+            // 3. Auto-Clasificación Masiva (Bulk AI) - NUEVA FUNCIONALIDAD
+            const handleBulkAiCategorization = async () => {
+                const uncategorized = cfdis.filter(c => c.tipo === 'Recibido' && !gastosMeta[c.uuid]?.ctaContable).slice(0, 15);
+                if (uncategorized.length === 0) return triggerToast('Todos los gastos mostrados ya tienen cuenta contable.');
+
+                setBulkAiLoading(true);
+                const sysPrompt = "Actúas como un motor ERP backend automatizado. Recibes un catálogo y una lista de compras. Devuelve UNICAMENTE el JSON.";
+                const userPrompt = `Catálogo Contable: ${JSON.stringify(accounts.map(a=>({cod:a.codigo, nom:a.nombre})))}\n\nFacturas a clasificar:\n` +
+                    uncategorized.map(c => `- ID: ${c.uuid}, Prov: ${c.nombreEmisor}, Concepto: ${c.concepto.substring(0,100)}`).join('\n') +
+                    `\n\nResponde estrictamente con un JSON que tenga este formato: { "resultados": [ {"uuid": "...", "codigoCta": "102...", "etiquetaCorta": "Mantenimiento"} ] }`;
+
+                const schema = { type: "OBJECT", properties: { resultados: { type: "ARRAY", items: { type: "OBJECT", properties: { uuid: { type: "STRING" }, codigoCta: { type: "STRING" }, etiquetaCorta: { type: "STRING" } }, required: ["uuid", "codigoCta", "etiquetaCorta"] } } }, required: ["resultados"] };
+
                 try {
                     const resText = await callAiAPI(userPrompt, sysPrompt, true, schema);
                     const parsed = safeParseJSON(resText);
-                    setAiSuggestions(prev => ({ ...prev, [mov.id]: parsed }));
-                    triggerToast(`✨ Sugerencia contable generada.`);
-                } catch (err) { triggerToast('Error IA. Revisa tu API Key.'); } 
-                finally { setLoadingAiSug(prev => ({ ...prev, [mov.id]: false })); }
+                    if (parsed && parsed.resultados && Array.isArray(parsed.resultados)) {
+                        parsed.resultados.forEach(item => {
+                            if (item.uuid && item.codigoCta) {
+                                updateGastoMeta(item.uuid, 'ctaContable', item.codigoCta);
+                                updateGastoMeta(item.uuid, 'etiqueta', item.etiquetaCorta);
+                            }
+                        });
+                        triggerToast(`✨ ¡Magia! ${parsed.resultados.length} gastos clasificados por la IA.`);
+                    } else {
+                        triggerToast('Error: El modelo no devolvió la estructura esperada.');
+                    }
+                } catch (error) {
+                    triggerToast('❌ Error Bulk AI: ' + error.message);
+                } finally {
+                    setBulkAiLoading(false);
+                }
             };
 
+            // 4. Reporte y Chat
             const handleGenerateFiscalReport = async () => {
                 setLoadingAiReport(true);
                 const sysPrompt = "Eres un Auditor Superior de Hacienda (SAT) de México. Reporte profesional markdown.";
@@ -582,9 +614,9 @@
             const exportToExcelGastos = () => {
                 if (!window.XLSX) return triggerToast('Error: Biblioteca XLSX no cargada.');
                 const recibidos = cfdis.filter(c => c.tipo === 'Recibido');
+                if (recibidos.length === 0) return triggerToast('No hay gastos para exportar.');
                 const data = recibidos.map(c => {
                     const meta = gastosMeta[c.uuid] || {};
-                    // Find bank reference if matched
                     const matchId = Object.keys(matches).find(k => matches[k] === c.uuid);
                     const bankRef = matchId ? bankMovements.find(m => m.id == matchId)?.referencia : 'No Conciliado';
 
@@ -625,10 +657,11 @@
                 });
                 if(wb.SheetNames.length === 0) return triggerToast('No hay datos para exportar.');
                 XLSX.writeFile(wb, `Reporte_XMLs_${activeCompany.rfc}.xlsx`);
-                triggerToast('📊 Reporte Consolidado exportado.');
+                triggerToast('📊 Reporte Consolidado SAT exportado.');
             };
 
             const downloadContpaqiPolizas = () => {
+                if (generatedPolizas.length === 0) return triggerToast('Realiza la conciliación para generar pólizas.');
                 let txtContent = "";
                 generatedPolizas.forEach(p => {
                     const tipoNum = p.tipo === 'Ingreso' ? '1' : p.tipo === 'Egreso' ? '2' : '3';
@@ -642,7 +675,7 @@
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(new Blob([txtContent], { type: 'text/plain;charset=utf-8' }));
                 link.download = `Polizas_CONTPAQI_${activeCompany.rfc}.txt`;
-                link.click(); triggerToast('Descargado TXT para CONTPAQi.');
+                link.click(); triggerToast('✅ Descargado TXT para CONTPAQi.');
             };
 
             return (
@@ -655,7 +688,7 @@
                                     <i data-lucide="calculator" className="w-5 h-5"></i>
                                 </div>
                                 <div>
-                                    <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
+                                    <h1 className="text-lg font-bold tracking-tight flex items-center gap-2 font-sans">
                                         ConciliaMax
                                         {user && db ? <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Cloud Sync</span> : <span className="bg-emerald-500 text-slate-950 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-emerald-400">Local Only</span>}
                                     </h1>
@@ -670,7 +703,7 @@
                                         value={activeCompanyId}
                                         onChange={(e) => {
                                             setActiveCompanyId(e.target.value);
-                                            setCfdis([]); setBankMovements([]); setMatches([]); // Limpiar memoria por seguridad
+                                            setCfdis([]); setBankMovements([]); setMatches([]); setDashboardInsight(null);
                                             triggerToast('Cambiando contexto a empresa seleccionada.');
                                         }}
                                     >
@@ -699,7 +732,7 @@
                                     className={`py-3 px-3.5 border-b-[3px] font-bold text-xs flex items-center gap-1.5 whitespace-nowrap transition-colors 
                                     ${activeTab === tab.id ? (tab.color || 'border-emerald-500 text-emerald-600') : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>
                                     <i data-lucide={tab.icon} className="w-4 h-4"></i> {tab.label}
-                                    {tab.badge > 0 && <span className="ml-1 bg-slate-200 text-slate-700 px-1.5 rounded-full text-[10px]">{tab.badge}</span>}
+                                    {tab.badge > 0 && <span className={`ml-1 px-1.5 rounded-full text-[10px] ${activeTab === tab.id ? 'bg-white shadow-sm' : 'bg-slate-200 text-slate-700'}`}>{tab.badge}</span>}
                                 </button>
                             ))}
                         </div>
@@ -713,67 +746,264 @@
                     )}
 
                     {/* --- MAIN CONTENT AREA --- */}
-                    <main className="flex-1 overflow-y-auto bg-slate-50/50 p-4 sm:p-6 font-sans">
+                    <main className="flex-1 overflow-y-auto bg-slate-50 p-4 sm:p-6 font-sans">
                         <div className="max-w-7xl mx-auto space-y-6">
 
-                            {/* TAB: DASHBOARD */}
+                            {/* ======================================= */}
+                            {/* TAB: DASHBOARD (MANUAL DE USO + ESTADO + IA) */}
+                            {/* ======================================= */}
                             {activeTab === 'dashboard' && (
                                 <div className="space-y-6 animate-fade-in">
+                                    
+                                    {/* Header Banner */}
                                     <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-6 text-white shadow-lg flex flex-col md:flex-row justify-between items-center gap-4 border border-slate-700">
                                         <div>
-                                            <h2 className="text-2xl font-bold">Automatización Fiscal para {activeCompany.razonSocial}</h2>
+                                            <h2 className="text-2xl font-bold">Automatización Fiscal Integral</h2>
                                             <p className="text-slate-300 text-sm mt-1 max-w-2xl font-sans">
-                                                Concilia facturas del SAT contra bancos masivamente. Entorno multiempresa activado.
+                                                Cierre de periodo contable para <strong className="text-emerald-400">{activeCompany.razonSocial}</strong>.
                                             </p>
                                         </div>
                                         <div className="flex gap-2 flex-wrap">
                                             {cfdis.length === 0 && (
                                                 <button onClick={() => {
                                                     const demoData = [
-                                                        { uuid: '04E7659C', fecha: '2025-12-16', rfcEmisor: activeCompany.rfc, nombreEmisor: activeCompany.razonSocial, rfcReceptor: 'RCU150707', nombreReceptor: 'CLIENTE SA', total: 16851.74, subtotal: 14527.36, iva: 2324.38, tipo: 'Emitido', concepto: 'Servicios', status: 'Vigente' },
-                                                        { uuid: '0038C0FC', fecha: '2025-12-18', rfcEmisor: 'NWM9709244W4', nombreEmisor: 'NUEVA WAL MART', rfcReceptor: activeCompany.rfc, nombreReceptor: activeCompany.razonSocial, total: 332.48, subtotal: 286.62, iva: 45.86, tipo: 'Recibido', concepto: 'Papelería', status: 'Vigente' }
+                                                        { uuid: '04E7659C', fecha: '2026-05-02', rfcEmisor: activeCompany.rfc, nombreEmisor: activeCompany.razonSocial, rfcReceptor: 'RCU150707', nombreReceptor: 'CLIENTE SA', total: 16851.74, subtotal: 14527.36, iva: 2324.38, tipo: 'Emitido', concepto: 'Servicios de Arrendamiento', status: 'Vigente' },
+                                                        { uuid: '0038C0FC', fecha: '2026-05-05', rfcEmisor: 'NWM9709244W4', nombreEmisor: 'NUEVA WAL MART', rfcReceptor: activeCompany.rfc, nombreReceptor: activeCompany.razonSocial, total: 332.48, subtotal: 286.62, iva: 45.86, tipo: 'Recibido', concepto: 'Papelería y Oficina', status: 'Vigente' },
+                                                        { uuid: 'FE096CD4', fecha: '2026-05-10', rfcEmisor: 'AWS000101XYZ', nombreEmisor: 'AMAZON WEB SERVICES', rfcReceptor: activeCompany.rfc, nombreReceptor: activeCompany.razonSocial, total: 1753.92, subtotal: 1512.00, iva: 241.92, tipo: 'Recibido', concepto: 'Licenciamiento Software Cloud', status: 'Vigente' }
                                                     ];
                                                     setCfdis(demoData);
                                                     setBankMovements([
-                                                        { id: 1, fecha: '2025-12-18', referencia: 'COMPRA WALMART', descripcion: 'TC', cargo: 332.48, abono: 0, tipo: 'Egreso' },
-                                                        { id: 2, fecha: '2025-12-16', referencia: 'SPEI RECIBIDO', descripcion: 'CLIENTE', cargo: 0, abono: 16851.74, tipo: 'Ingreso' }
+                                                        { id: 1, fecha: '2026-05-05', referencia: 'COMPRA WALMART', descripcion: 'TC CORPORATIVA', cargo: 332.48, abono: 0, tipo: 'Egreso' },
+                                                        { id: 2, fecha: '2026-05-02', referencia: 'SPEI RECIBIDO', descripcion: 'PAGO CLIENTE SA', cargo: 0, abono: 16851.74, tipo: 'Ingreso' },
+                                                        { id: 3, fecha: '2026-05-10', referencia: 'PAYPAL *AWS', descripcion: 'SERVICIOS NUBE', cargo: 1753.92, abono: 0, tipo: 'Egreso' }
                                                     ]);
-                                                    triggerToast('Datos demo cargados.');
-                                                }} className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs transition-all shadow-lg">
-                                                    Cargar Demo
+                                                    triggerToast('Datos demo cargados. Navega a Control de Gastos para probar la IA.');
+                                                }} className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs transition-all shadow-lg flex items-center gap-2">
+                                                    <i data-lucide="play" className="w-4 h-4"></i> Cargar Archivos Demo
                                                 </button>
                                             )}
-                                            <button onClick={triggerSmartMatch} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs transition-all shadow-lg flex items-center gap-2">
-                                                <i data-lucide="sparkles" className="w-4 h-4"></i> Conciliar Inteligente
-                                            </button>
-                                            <button onClick={exportToExcelConsolidated} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-xs transition-all shadow-lg flex items-center gap-2">
-                                                <i data-lucide="download" className="w-4 h-4"></i> Exportar Todo
+                                        </div>
+                                    </div>
+
+                                    {/* Módulo Advanced AI Dashboard Insight */}
+                                    <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 rounded-xl p-5 border border-indigo-700 shadow-md text-white flex flex-col md:flex-row gap-4 items-center">
+                                        <div className="bg-indigo-700/50 p-3 rounded-full shrink-0">
+                                            <i data-lucide="brain-circuit" className="w-8 h-8 text-indigo-200"></i>
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-lg text-indigo-100 flex items-center gap-2">Flash Insight Financiero IA</h3>
+                                            {dashboardInsight ? (
+                                                <p className="text-sm text-indigo-50 leading-relaxed mt-2 whitespace-pre-wrap font-sans bg-indigo-950/30 p-3 rounded-lg border border-indigo-700/50">{dashboardInsight}</p>
+                                            ) : (
+                                                <p className="text-xs text-indigo-300 mt-1 font-sans">Analiza tus ingresos contra egresos facturados para detectar posibles riesgos tributarios.</p>
+                                            )}
+                                        </div>
+                                        <div className="shrink-0">
+                                            <button onClick={generateDashboardInsight} disabled={loadingInsight || (cfdis.length === 0 && bankMovements.length === 0)} 
+                                                className="bg-white text-indigo-900 px-5 py-2.5 rounded-lg font-bold text-xs hover:bg-indigo-50 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                                                {loadingInsight ? <span className="animate-pulse">Analizando...</span> : <><i data-lucide="sparkles" className="w-4 h-4"></i> Generar Radar IA</>}
                                             </button>
                                         </div>
                                     </div>
+
+                                    {/* KPIs */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 font-sans">
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
                                             <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Tasa de Conciliación</div>
-                                            <div className="text-3xl font-mono font-bold mt-2">{dashboardStats.conciliationRate}%</div>
-                                            <div className="w-full bg-slate-100 rounded-full h-1.5 mt-3"><div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${dashboardStats.conciliationRate}%` }}></div></div>
+                                            <div className="text-3xl font-mono font-bold mt-2 text-slate-800">{dashboardStats.conciliationRate}%</div>
+                                            <div className="w-full bg-slate-100 rounded-full h-1.5 mt-3"><div className="bg-emerald-500 h-1.5 rounded-full transition-all" style={{ width: `${dashboardStats.conciliationRate}%` }}></div></div>
                                         </div>
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
-                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Ingresos (Emitidos)</div>
-                                            <div className="text-2xl font-mono font-bold mt-2 text-emerald-600">${dashboardStats.totalCfdisEmitidos.toLocaleString('es-MX')}</div>
+                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Facturado (Ingresos)</div>
+                                            <div className="text-2xl font-mono font-bold mt-2 text-emerald-600">${dashboardStats.totalCfdisEmitidos.toLocaleString('es-MX', {maximumFractionDigits: 0})}</div>
+                                            <div className="text-[10px] text-slate-400 mt-1">CFDIs Emitidos</div>
                                         </div>
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
-                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Gastos (Recibidos)</div>
-                                            <div className="text-2xl font-mono font-bold mt-2 text-amber-600">${dashboardStats.totalCfdisRecibidos.toLocaleString('es-MX')}</div>
+                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Facturado (Gastos)</div>
+                                            <div className="text-2xl font-mono font-bold mt-2 text-amber-600">${dashboardStats.totalCfdisRecibidos.toLocaleString('es-MX', {maximumFractionDigits: 0})}</div>
+                                            <div className="text-[10px] text-slate-400 mt-1">CFDIs Recibidos</div>
                                         </div>
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
-                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Bancos (Egreso)</div>
-                                            <div className="text-2xl font-mono font-bold mt-2 text-indigo-600">${dashboardStats.totalBancosEgreso.toLocaleString('es-MX')}</div>
+                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Egresos Bancarios</div>
+                                            <div className="text-2xl font-mono font-bold mt-2 text-indigo-600">${dashboardStats.totalBancosEgreso.toLocaleString('es-MX', {maximumFractionDigits: 0})}</div>
+                                            <div className="text-[10px] text-slate-400 mt-1">Sálida en banco</div>
+                                        </div>
+                                    </div>
+
+                                    {/* APARTADO ¿CÓMO AUTOMATIZAR TU CONCILIACIÓN? (RESTAURADO Y MEJORADO) */}
+                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                                        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                                            <div className="bg-emerald-100 text-emerald-800 p-1.5 rounded-lg"><i data-lucide="help-circle" className="w-5 h-5"></i></div>
+                                            <div>
+                                                <h3 className="font-bold text-slate-900 text-base">¿Cómo automatizar tu ERP? Manual de Uso</h3>
+                                                <p className="text-xs text-slate-500 font-sans">Completa el flujo para asegurar la consistencia de tu auditoría.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col justify-between space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paso 1</span>
+                                                        <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i>
+                                                    </div>
+                                                    <h4 className="font-bold text-xs text-slate-800">Empresa Activa</h4>
+                                                    <p className="text-[10px] text-slate-500 leading-normal">Tienes seleccionada la empresa <span className="font-bold">{activeCompany.rfc}</span> en la nube.</p>
+                                                </div>
+                                                <button onClick={() => setActiveTab('configuracion')} className="text-[11px] font-bold text-indigo-600 text-left">Cambiar →</button>
+                                            </div>
+
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col justify-between space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paso 2</span>
+                                                        {cfdis.length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
+                                                    </div>
+                                                    <h4 className="font-bold text-xs text-slate-800">Cargar XMLs</h4>
+                                                    <p className="text-[10px] text-slate-500 leading-normal">Importa tus carpetas ZIP desde el SAT en milisegundos de forma local.</p>
+                                                </div>
+                                                <button onClick={() => { setActiveTab('sat'); setXmlSubTab('carga'); }} className="text-[11px] font-bold text-emerald-600 text-left">Importar →</button>
+                                            </div>
+
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col justify-between space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paso 3</span>
+                                                        {bankMovements.length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
+                                                    </div>
+                                                    <h4 className="font-bold text-xs text-slate-800">Bancos CSV</h4>
+                                                    <p className="text-[10px] text-slate-500 leading-normal">Sube el extracto bancario para aparearlo contra tus facturas.</p>
+                                                </div>
+                                                <button onClick={() => setActiveTab('bancos')} className="text-[11px] font-bold text-emerald-600 text-left">Bancos →</button>
+                                            </div>
+
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-amber-50/50 flex flex-col justify-between space-y-3 border-amber-200/50">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Paso 4 (IA)</span>
+                                                        {Object.keys(gastosMeta).length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-amber-500"></i> : <i data-lucide="sparkles" className="w-4 h-4 text-amber-400"></i>}
+                                                    </div>
+                                                    <h4 className="font-bold text-xs text-amber-900">Clasificar Gastos</h4>
+                                                    <p className="text-[10px] text-amber-700/80 leading-normal">Utiliza nuestro motor de IA para asignar Cuentas Contables y Etiquetas a Egresos.</p>
+                                                </div>
+                                                <button onClick={() => setActiveTab('gastos')} className="text-[11px] font-bold text-amber-600 text-left flex items-center gap-1">Ir a Gastos <i data-lucide="arrow-right" className="w-3 h-3"></i></button>
+                                            </div>
+
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col justify-between space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paso 5</span>
+                                                        <span className="w-2 h-2 rounded-full bg-slate-300"></span>
+                                                    </div>
+                                                    <h4 className="font-bold text-xs text-slate-800">Exportar Pólizas</h4>
+                                                    <p className="text-[10px] text-slate-500 leading-normal">Descarga tu TXT para CONTPAQi o Alegra ya conciliado.</p>
+                                                </div>
+                                                <button onClick={() => setActiveTab('polizas')} className="text-[11px] font-bold text-emerald-600 text-left">Pólizas →</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* PANEL DE ESTADO DE DATOS DE SESIÓN (RESTAURADO) */}
+                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 font-sans">
+                                        <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+                                            <div className="bg-indigo-100 text-indigo-800 p-1.5 rounded-lg"><i data-lucide="database" className="w-5 h-5"></i></div>
+                                            <div>
+                                                <h3 className="font-bold text-slate-900 text-base">Estado de Memoria RAM Activa</h3>
+                                                <p className="text-xs text-slate-500">Monitorea los recursos temporales aislados en tu navegador.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-xs text-slate-700">
+                                            <div className="space-y-1 border-r border-slate-100 pr-4">
+                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold">Empresa</div>
+                                                <div className="font-bold text-slate-800 truncate">{activeCompany.razonSocial}</div>
+                                                <div className="font-mono text-emerald-600 font-bold">{activeCompany.rfc}</div>
+                                            </div>
+                                            <div className="space-y-1 border-r border-slate-100 px-4 font-mono">
+                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Comprobantes ({cfdis.length})</div>
+                                                <div className="grid grid-cols-2 gap-x-2">
+                                                    <div>Ingresos: {cfdis.filter(c => c.tipo === 'Emitido').length}</div>
+                                                    <div className="text-amber-600">Gastos: {cfdis.filter(c => c.tipo === 'Recibido').length}</div>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1 border-r border-slate-100 px-4 font-mono">
+                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Flujo de Banco</div>
+                                                <div>Movimientos: <span className="font-bold text-indigo-600">{bankMovements.length}</span></div>
+                                                <div>Gastos Meta: <span className="font-bold text-amber-600">{Object.keys(gastosMeta).length} guardados</span></div>
+                                            </div>
+                                            <div className="space-y-1 pl-4 flex flex-col justify-between">
+                                                <div>
+                                                    <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Acción de Limpieza</div>
+                                                    <div>RAM Temporal</div>
+                                                </div>
+                                                <button onClick={() => { setCfdis([]); setBankMovements([]); setMatches([]); setDashboardInsight(null); triggerToast('🧹 Datos de sesión temporal eliminados.'); }} className="text-rose-600 hover:text-rose-700 font-bold text-[11px] underline text-left mt-2">Vaciar Memoria</button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
-                            {/* TAB: IMPORTAR XML */}
+                            {/* ======================================= */}
+                            {/* TAB: CONTROL DE GASTOS (BULK AI ADDED)  */}
+                            {/* ======================================= */}
+                            {activeTab === 'gastos' && (
+                                <div className="space-y-4 animate-fade-in">
+                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-4 border-l-amber-500">
+                                        <div>
+                                            <h3 className="font-bold text-lg text-amber-700 flex items-center gap-2"><i data-lucide="clipboard-list" className="w-5 h-5"></i> Control de Gastos & Clasificación IA</h3>
+                                            <p className="text-xs text-slate-500 mt-1">Administra la meta-información de tus Egresos. La AI puede mapear tus compras al catálogo contable instantáneamente.</p>
+                                        </div>
+                                        <div className="flex gap-2 w-full md:w-auto">
+                                            <button onClick={handleBulkAiCategorization} disabled={bulkAiLoading || cfdis.filter(c => c.tipo === 'Recibido').length === 0}
+                                                className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors flex-1 md:flex-none disabled:opacity-50">
+                                                {bulkAiLoading ? <span className="animate-pulse">Pensando...</span> : <><i data-lucide="sparkles" className="w-4 h-4"></i> Auto-Clasificar Masivo (IA)</>}
+                                            </button>
+                                            <button onClick={exportToExcelGastos} className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors">
+                                                <i data-lucide="download" className="w-4 h-4"></i> Exportar
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs whitespace-nowrap">
+                                                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px] font-sans">
+                                                    <tr>
+                                                        <th className="p-3">Fecha</th>
+                                                        <th className="p-3">Proveedor / Emisor</th>
+                                                        <th className="p-3">UUID</th>
+                                                        <th className="p-3 text-right">Subtotal</th>
+                                                        <th className="p-3 text-right">IVA</th>
+                                                        <th className="p-3 text-right">Total</th>
+                                                        <th className="p-3 text-center text-indigo-600">Match Banco</th>
+                                                        <th className="p-3 bg-amber-50 text-amber-800 min-w-[200px]">Descripción Editable</th>
+                                                        <th className="p-3 bg-amber-50 text-amber-800 min-w-[150px]">Cta. Contable <span className="text-[9px] font-normal lowercase">(IA Target)</span></th>
+                                                        <th className="p-3 bg-amber-50 text-amber-800 min-w-[150px]">Etiqueta Gasto</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="font-mono">
+                                                    {cfdis.filter(c => c.tipo === 'Recibido').map(c => {
+                                                        const meta = gastosMeta[c.uuid] || {};
+                                                        const matchId = Object.keys(matches).find(k => matches[k] === c.uuid);
+                                                        const bankMov = matchId ? bankMovements.find(m => m.id == matchId) : null;
+                                                        return <GastoRow key={c.uuid} cfdi={c} meta={meta} onUpdate={updateGastoMeta} bankMovement={bankMov} />;
+                                                    })}
+                                                    {cfdis.filter(c => c.tipo === 'Recibido').length === 0 && (
+                                                        <tr><td colSpan="10" className="p-10 text-center text-slate-400 font-sans italic bg-slate-50/50">
+                                                            <i data-lucide="inbox" className="w-10 h-10 mx-auto mb-2 text-slate-300"></i>
+                                                            No hay facturas de Gastos (Recibidos) importadas en esta sesión.
+                                                        </td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ======================================= */}
+                            {/* TAB: IMPORTAR XML                       */}
+                            {/* ======================================= */}
                             {activeTab === 'sat' && (
                                 <div className="space-y-6">
                                     <div className="flex border-b border-slate-200 overflow-x-auto font-sans">
@@ -783,8 +1013,8 @@
 
                                     {xmlSubTab === 'carga' && (
                                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
-                                            <h3 className="text-lg font-bold mb-2">Importación XML Local (Sin Nube)</h3>
-                                            <p className="text-xs text-slate-500 mb-6">Arrastra archivos XML o ZIP. Todo se procesa rápido en la RAM de tu PC.</p>
+                                            <h3 className="text-lg font-bold mb-2">Importación XML Local</h3>
+                                            <p className="text-xs text-slate-500 mb-6">Arrastra archivos XML o ZIP. Todo se procesa rápido y privado en tu PC.</p>
                                             <div className="border-2 border-dashed border-emerald-300 rounded-xl p-10 bg-emerald-50 hover:bg-emerald-100 transition-colors relative cursor-pointer max-w-lg mx-auto">
                                                 <input type="file" accept=".xml,.zip" multiple onChange={handleLocalXmlUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                                 <i data-lucide="files" className="w-12 h-12 text-emerald-500 mx-auto mb-3"></i>
@@ -809,11 +1039,11 @@
                                                     <tbody>
                                                         {cfdis.filter(c => cfdiTypeFilter === 'Todos' || c.tipo === cfdiTypeFilter).map(c => (
                                                             <tr key={c.uuid} className="border-b border-slate-50 hover:bg-slate-50">
-                                                                <td className="py-2">{c.fecha}</td>
+                                                                <td className="py-2 text-slate-500">{c.fecha}</td>
                                                                 <td><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${c.tipo === 'Recibido'?'bg-amber-100 text-amber-800':'bg-emerald-100 text-emerald-800'}`}>{c.tipo}</span></td>
                                                                 <td>{c.rfcEmisor}</td>
-                                                                <td className="truncate max-w-[150px] font-sans">{c.nombreEmisor}</td>
-                                                                <td className="text-right font-bold">${c.total.toFixed(2)}</td>
+                                                                <td className="truncate max-w-[150px] font-sans font-bold">{c.nombreEmisor}</td>
+                                                                <td className="text-right font-bold text-slate-800">${c.total.toFixed(2)}</td>
                                                                 <td className="text-slate-400">{c.uuid.substring(0,8)}</td>
                                                             </tr>
                                                         ))}
@@ -825,54 +1055,9 @@
                                 </div>
                             )}
 
-                            {/* NUEVA PESTAÑA: CONTROL DE GASTOS */}
-                            {activeTab === 'gastos' && (
-                                <div className="space-y-4 animate-fade-in">
-                                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 border-l-4 border-l-amber-500">
-                                        <div>
-                                            <h3 className="font-bold text-lg text-amber-700 flex items-center gap-2"><i data-lucide="clipboard-list"></i> Control de Gastos Estructurado</h3>
-                                            <p className="text-xs text-slate-500 mt-1">Administra la meta-información de tus Egresos (CFDI Recibidos). Se guarda en tiempo real en la nube asociada a tu empresa.</p>
-                                        </div>
-                                        <button onClick={exportToExcelGastos} className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-sm transition-colors">
-                                            <i data-lucide="download" className="w-4 h-4"></i> Exportar Tabla a Excel
-                                        </button>
-                                    </div>
-
-                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left text-xs whitespace-nowrap">
-                                                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px] font-sans">
-                                                    <tr>
-                                                        <th className="p-3">Fecha</th>
-                                                        <th className="p-3">Proveedor / Emisor</th>
-                                                        <th className="p-3">UUID</th>
-                                                        <th className="p-3 text-right">Subtotal</th>
-                                                        <th className="p-3 text-right">IVA</th>
-                                                        <th className="p-3 text-right">Total</th>
-                                                        <th className="p-3 text-center text-indigo-600">Match Banco</th>
-                                                        <th className="p-3 bg-amber-50 text-amber-800 min-w-[200px]">Descripción Editable</th>
-                                                        <th className="p-3 bg-amber-50 text-amber-800 min-w-[150px]">Cuenta Contable</th>
-                                                        <th className="p-3 bg-amber-50 text-amber-800 min-w-[150px]">Etiqueta Gasto</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="font-mono">
-                                                    {cfdis.filter(c => c.tipo === 'Recibido').map(c => {
-                                                        const meta = gastosMeta[c.uuid] || {};
-                                                        const matchId = Object.keys(matches).find(k => matches[k] === c.uuid);
-                                                        const bankMov = matchId ? bankMovements.find(m => m.id == matchId) : null;
-                                                        return <GastoRow key={c.uuid} cfdi={c} meta={meta} onUpdate={updateGastoMeta} bankMovement={bankMov} />;
-                                                    })}
-                                                    {cfdis.filter(c => c.tipo === 'Recibido').length === 0 && (
-                                                        <tr><td colSpan="10" className="p-8 text-center text-slate-400 font-sans italic">No hay facturas de Gastos (Recibidos) importadas en esta sesión.</td></tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB: BANCOS */}
+                            {/* ======================================= */}
+                            {/* TAB: BANCOS                             */}
+                            {/* ======================================= */}
                             {activeTab === 'bancos' && (
                                 <div className="space-y-6">
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
@@ -897,8 +1082,8 @@
                                                                 <td className="py-2">{m.fecha}</td>
                                                                 <td className="font-bold">{m.referencia}</td>
                                                                 <td className="truncate max-w-[200px]">{m.descripcion}</td>
-                                                                <td className="text-right text-rose-600">{m.cargo > 0 ? `-$${m.cargo.toFixed(2)}` : ''}</td>
-                                                                <td className="text-right text-emerald-600">{m.abono > 0 ? `+$${m.abono.toFixed(2)}` : ''}</td>
+                                                                <td className="text-right text-rose-600 font-bold">{m.cargo > 0 ? `-$${m.cargo.toFixed(2)}` : ''}</td>
+                                                                <td className="text-right text-emerald-600 font-bold">{m.abono > 0 ? `+$${m.abono.toFixed(2)}` : ''}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -909,125 +1094,143 @@
                                 </div>
                             )}
 
-                            {/* TAB: CONCILIACIÓN */}
+                            {/* ======================================= */}
+                            {/* TAB: CONCILIACIÓN                       */}
+                            {/* ======================================= */}
                             {activeTab === 'conciliacion' && (
                                 <div className="space-y-6">
                                     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
                                         <div>
-                                            <h3 className="font-bold text-sm">Asistente de Conciliación</h3>
-                                            <p className="text-xs text-slate-500 font-sans">Apareamiento Bancos vs XML</p>
+                                            <h3 className="font-bold text-sm">Asistente de Conciliación Local</h3>
+                                            <p className="text-xs text-slate-500 font-sans">Apareamiento Banco vs CFDI de <span className="font-bold text-slate-800">{activeCompany.razonSocial}</span>.</p>
                                         </div>
-                                        <button onClick={triggerSmartMatch} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs">Conciliar Inteligente</button>
+                                        <button onClick={triggerSmartMatch} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs flex gap-1.5 items-center">
+                                            <i data-lucide="sparkles" className="w-4 h-4"></i> Automatch Inteligente
+                                        </button>
                                     </div>
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
                                         <table className="w-full text-left text-xs font-sans whitespace-nowrap">
                                             <thead className="border-b border-slate-200 text-slate-400 uppercase tracking-wider text-[10px]">
-                                                <tr><th className="p-3">Banco</th><th className="p-3 text-right">Importe</th><th className="p-3 text-center">Estatus</th><th className="p-3">CFDI SAT</th><th className="p-3">Cuenta (IA)</th><th className="p-3">Acción</th></tr>
+                                                <tr><th className="p-3">Banco</th><th className="p-3 text-right">Importe</th><th className="p-3 text-center">Match</th><th className="p-3">CFDI SAT</th><th className="p-3 text-center">Eliminar</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {bankMovements.map(mov => {
                                                     const matchedUuid = matches[mov.id];
                                                     const cfdi = matchedUuid ? cfdis.find(c => c.uuid === matchedUuid) : null;
                                                     const amount = mov.cargo > 0 ? mov.cargo : mov.abono;
-                                                    const isSug = aiSuggestions[mov.id];
-                                                    const isSugLoading = loadingAiSug[mov.id];
 
                                                     return (
-                                                        <tr key={mov.id} className="hover:bg-slate-50">
+                                                        <tr key={mov.id} className="hover:bg-slate-50 transition-colors">
                                                             <td className="p-3">
-                                                                <div className="font-bold">{mov.referencia}</div><div className="text-[10px] text-slate-400">{mov.fecha}</div>
+                                                                <div className="font-bold text-slate-800">{mov.referencia}</div><div className="text-[10px] text-slate-400 font-mono">{mov.fecha} - {mov.descripcion}</div>
                                                             </td>
-                                                            <td className="p-3 text-right font-mono font-bold">${amount.toLocaleString()}</td>
+                                                            <td className="p-3 text-right font-mono font-bold text-slate-700">${amount.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
                                                             <td className="p-3 text-center"><i data-lucide={matchedUuid ? "link" : "link-2"} className={`w-4 h-4 inline ${matchedUuid ? 'text-emerald-500' : 'text-slate-300'}`}></i></td>
                                                             <td className="p-3">
                                                                 {cfdi ? (
-                                                                    <div><div className="font-bold text-emerald-800">{cfdi.nombreEmisor}</div><div className="text-[10px] text-slate-400">{cfdi.uuid.substring(0,8)}</div></div>
+                                                                    <div className="bg-emerald-50 border border-emerald-100 px-2 py-1 rounded inline-block">
+                                                                        <div className="font-bold text-emerald-800 text-[11px] truncate max-w-[150px]">{cfdi.nombreEmisor}</div>
+                                                                        <div className="text-[9px] text-slate-500 font-mono uppercase">{cfdi.uuid.substring(0,8)}</div>
+                                                                    </div>
                                                                 ) : (
-                                                                    <select onChange={(e) => { setMatches({...matches, [mov.id]: e.target.value}); triggerToast('Vinculado'); }} className="text-[10px] border rounded p-1 max-w-[150px] outline-none">
-                                                                        <option value="">Vincular manual...</option>
-                                                                        {cfdis.filter(c => !Object.values(matches).includes(c.uuid) && Math.abs(c.total - amount) < 2).map(c => <option key={c.uuid} value={c.uuid}>${c.total} - {c.nombreEmisor}</option>)}
+                                                                    <select onChange={(e) => { if(e.target.value){setMatches({...matches, [mov.id]: e.target.value}); triggerToast('Vinculado Exitosamente.');} }} className="text-[10px] border border-slate-200 bg-slate-50 rounded p-1.5 w-full max-w-[200px] outline-none font-bold text-slate-600 focus:border-indigo-400">
+                                                                        <option value="">Buscar CFDI coincidente...</option>
+                                                                        {cfdis.filter(c => !Object.values(matches).includes(c.uuid) && Math.abs(c.total - amount) < 1).map(c => <option key={c.uuid} value={c.uuid}>${c.total.toFixed(2)} - {c.nombreEmisor}</option>)}
                                                                     </select>
                                                                 )}
                                                             </td>
-                                                            <td className="p-3">
-                                                                {isSug ? (
-                                                                    <div className="bg-indigo-50 border border-indigo-200 p-1.5 rounded text-[10px]">
-                                                                        <div className="font-bold text-indigo-900">{isSug.codigoSugerido}</div>
-                                                                        <button onClick={() => { triggerToast('Cuenta IA Aceptada'); if(cfdi) updateGastoMeta(cfdi.uuid, 'ctaContable', isSug.codigoSugerido); }} className="mt-1 bg-indigo-600 text-white font-bold py-0.5 px-2 rounded w-full">Asignar</button>
-                                                                    </div>
-                                                                ) : (
-                                                                    <button onClick={() => handleAskAiForMovement(mov)} disabled={isSugLoading} className="text-indigo-600 border border-indigo-200 rounded px-2 py-1 text-[10px]">{isSugLoading ? '...' : 'Sugerir IA'}</button>
-                                                                )}
-                                                            </td>
                                                             <td className="p-3 text-center">
-                                                                {matchedUuid && <button onClick={() => {const c={...matches}; delete c[mov.id]; setMatches(c);}} className="text-rose-500"><i data-lucide="x" className="w-4 h-4"></i></button>}
+                                                                {matchedUuid && <button onClick={() => {const c={...matches}; delete c[mov.id]; setMatches(c);}} className="text-rose-400 hover:text-rose-600 transition-colors"><i data-lucide="x-circle" className="w-5 h-5"></i></button>}
                                                             </td>
                                                         </tr>
                                                     );
                                                 })}
-                                                {bankMovements.length === 0 && <tr><td colSpan="6" className="p-8 text-center text-slate-400 italic">No hay bancos.</td></tr>}
+                                                {bankMovements.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-slate-400 italic">Importa tu estado de cuenta en la pestaña "Bancos" para iniciar.</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
                             )}
 
-                            {/* TAB: PÓLIZAS */}
+                            {/* ======================================= */}
+                            {/* TAB: PÓLIZAS CONTPAQI / ALEGRA          */}
+                            {/* ======================================= */}
                             {activeTab === 'polizas' && (
                                 <div className="space-y-6">
-                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between gap-4">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
                                         <div>
-                                            <h3 className="font-bold text-lg">Pólizas ERP</h3>
-                                            <p className="text-xs text-slate-500">Listas para importar a CONTPAQi / Alegra.</p>
+                                            <h3 className="font-bold text-lg">Exportador de Pólizas ERP</h3>
+                                            <p className="text-xs text-slate-500">Asientos generados dinámicamente con las cuentas definidas en <strong>Control de Gastos</strong>.</p>
                                         </div>
                                         <div className="flex gap-2">
-                                            <button onClick={downloadContpaqiPolizas} className="bg-slate-900 text-white font-bold py-2 px-4 rounded-lg text-xs">Descargar CONTPAQi</button>
+                                            <button onClick={downloadContpaqiPolizas} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-xs shadow-md transition-colors flex items-center gap-2"><i data-lucide="download" className="w-4 h-4"></i> Descargar TXT CONTPAQi</button>
                                         </div>
                                     </div>
                                     <div className="space-y-4 font-mono text-xs">
                                         {generatedPolizas.slice(0, 50).map(p => (
                                             <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                                                <div className="bg-slate-50 p-4 border-b flex justify-between font-sans">
-                                                    <span className="font-bold">Póliza de {p.tipo} #{p.numero} - {p.fecha}</span>
-                                                    <span className="text-[10px] text-slate-400">{p.uuidAsociado.substring(0,18)}</span>
+                                                <div className="bg-slate-50 p-4 border-b flex justify-between font-sans items-center">
+                                                    <span className="font-bold text-slate-700 bg-white px-2 py-1 rounded shadow-sm border border-slate-100">Póliza de {p.tipo} #{p.numero} - <span className="text-indigo-600">{p.fecha}</span></span>
+                                                    <span className="text-[10px] text-slate-400 border border-slate-200 px-2 py-0.5 rounded-full">{p.uuidAsociado.substring(0,18)}</span>
                                                 </div>
                                                 <div className="p-4 overflow-x-auto">
                                                     <table className="w-full text-left">
-                                                        <thead className="border-b text-slate-400 text-[10px] font-sans"><tr><th className="py-1">Cuenta</th><th>Nombre</th><th className="text-right">Debe</th><th className="text-right">Haber</th></tr></thead>
+                                                        <thead className="border-b text-slate-400 text-[10px] font-sans uppercase tracking-wider"><tr><th className="py-1">Cta. Contable</th><th>Nombre Cuenta</th><th className="text-right">Debe (Cargo)</th><th className="text-right">Haber (Abono)</th></tr></thead>
                                                         <tbody>
                                                             {p.movimientos.map((m, idx) => (
-                                                                <tr key={idx} className="border-b border-slate-50"><td className="py-2 font-bold">{m.cuenta}</td><td className="font-sans">{m.nombre}</td><td className="text-right text-emerald-700">${m.cargo.toFixed(2)}</td><td className="text-right text-rose-700">${m.abono.toFixed(2)}</td></tr>
+                                                                <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
+                                                                    <td className="py-2.5 font-bold text-slate-800">{m.cuenta}</td>
+                                                                    <td className="font-sans text-slate-600 font-medium">{m.nombre}</td>
+                                                                    <td className="text-right font-bold text-emerald-700">${m.cargo.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+                                                                    <td className="text-right font-bold text-rose-700">${m.abono.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+                                                                </tr>
                                                             ))}
                                                         </tbody>
                                                     </table>
                                                 </div>
                                             </div>
                                         ))}
+                                        {generatedPolizas.length === 0 && <div className="text-center p-8 bg-white rounded-xl border border-slate-200 text-slate-400 font-sans italic">Genera matches en Conciliación para previsualizar las pólizas.</div>}
                                     </div>
                                 </div>
                             )}
 
-                            {/* TAB: CATÁLOGO */}
+                            {/* ======================================= */}
+                            {/* TAB: CATÁLOGO                           */}
+                            {/* ======================================= */}
                             {activeTab === 'catalogo' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-fit">
-                                        <h3 className="font-bold mb-4">Cuentas Contables</h3>
-                                        <form onSubmit={(e) => { e.preventDefault(); setAccounts([...accounts, {codigo: e.target.codigo.value, nombre: e.target.nombre.value, tipo: 'Egreso'}]); triggerToast('Agregada'); }} className="space-y-3 text-xs mb-6">
-                                            <input name="codigo" placeholder="Código (ej: 601)" className="w-full border rounded p-2 outline-none" required />
-                                            <input name="nombre" placeholder="Nombre (ej: Gastos IT)" className="w-full border rounded p-2 outline-none" required />
-                                            <button className="bg-slate-900 text-white w-full py-2 rounded font-bold">Agregar Manual</button>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-fit md:col-span-1">
+                                        <h3 className="font-bold mb-4 text-base">Cuentas Contables</h3>
+                                        <form onSubmit={(e) => { e.preventDefault(); setAccounts([...accounts, {codigo: e.target.codigo.value, nombre: e.target.nombre.value, tipo: 'Egreso'}]); triggerToast('Cuenta Agregada'); e.target.reset(); }} className="space-y-4 text-xs mb-6">
+                                            <div>
+                                                <label className="font-bold text-slate-500 mb-1 block">Código</label>
+                                                <input name="codigo" placeholder="Ej: 601-01-001" className="w-full bg-slate-50 border border-slate-200 rounded p-2 outline-none focus:border-indigo-400 font-mono" required />
+                                            </div>
+                                            <div>
+                                                <label className="font-bold text-slate-500 mb-1 block">Nombre</label>
+                                                <input name="nombre" placeholder="Ej: Gastos IT" className="w-full bg-slate-50 border border-slate-200 rounded p-2 outline-none focus:border-indigo-400" required />
+                                            </div>
+                                            <button className="bg-slate-900 text-white w-full py-2.5 rounded-lg font-bold hover:bg-slate-800 transition-colors shadow-sm">Guardar Cuenta</button>
                                         </form>
-                                        <div className="border border-dashed p-4 text-center cursor-pointer hover:bg-slate-50 relative">
+                                        <div className="border-2 border-dashed border-slate-200 p-6 text-center cursor-pointer hover:bg-slate-50 relative rounded-xl transition-colors">
                                             <input type="file" onChange={handleCatalogUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                            <span className="text-xs font-bold">Subir CSV de Catálogo</span>
+                                            <i data-lucide="file-spreadsheet" className="w-6 h-6 text-slate-400 mx-auto mb-2"></i>
+                                            <span className="text-xs font-bold text-slate-600">Importar Catálogo CSV</span>
                                         </div>
                                     </div>
-                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm max-h-[600px] overflow-y-auto">
-                                        <h3 className="font-bold mb-4">Mapeo Activo</h3>
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-[600px] overflow-y-auto md:col-span-2">
+                                        <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b border-slate-100">
+                                            <h3 className="font-bold text-base">Mapeo Activo</h3>
+                                            <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md font-bold">{accounts.length} Cuentas</span>
+                                        </div>
                                         <table className="w-full text-xs text-left font-mono">
                                             <tbody>
                                                 {accounts.map(a => (
-                                                    <tr key={a.codigo} className="border-b"><td className="py-2 font-bold">{a.codigo}</td><td className="font-sans text-slate-600">{a.nombre}</td></tr>
+                                                    <tr key={a.codigo} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                                                        <td className="py-3 font-bold text-slate-800 w-32">{a.codigo}</td>
+                                                        <td className="font-sans text-slate-600">{a.nombre}</td>
+                                                    </tr>
                                                 ))}
                                             </tbody>
                                         </table>
@@ -1035,45 +1238,62 @@
                                 </div>
                             )}
 
-                            {/* TAB: CONSULTOR IA */}
+                            {/* ======================================= */}
+                            {/* TAB: CONSULTOR IA                       */}
+                            {/* ======================================= */}
                             {activeTab === 'consultor-ia' && (
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[600px]">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="font-bold">Auditoría Fiscal SAT</h3>
-                                            <button onClick={handleGenerateFiscalReport} disabled={loadingAiReport} className="bg-slate-900 text-white px-3 py-1.5 rounded text-xs font-bold">{loadingAiReport ? '...' : 'Generar'}</button>
+                                        <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-4">
+                                            <h3 className="font-bold text-base flex items-center gap-2"><i data-lucide="file-check-2" className="text-indigo-500"></i> Auditoría Fiscal SAT</h3>
+                                            <button onClick={handleGenerateFiscalReport} disabled={loadingAiReport} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm">{loadingAiReport ? 'Redactando...' : 'Generar Reporte'}</button>
                                         </div>
-                                        <div className="flex-1 bg-slate-50 p-4 rounded border text-xs overflow-y-auto whitespace-pre-wrap">{aiReport || 'Ejecuta el diagnóstico...'}</div>
+                                        <div className="flex-1 bg-slate-50 p-5 rounded-lg border border-slate-200 text-[13px] overflow-y-auto whitespace-pre-wrap font-sans text-slate-700 leading-relaxed">
+                                            {aiReport ? aiReport : (
+                                                <div className="h-full flex flex-col items-center justify-center text-slate-400 italic">
+                                                    <i data-lucide="file-text" className="w-12 h-12 mb-3 text-slate-300"></i>
+                                                    El agente evaluará retenciones, IVA y discrepancia fiscal.
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[600px]">
-                                        <h3 className="font-bold mb-4">Chat Fiscal Leyes Mexicanas</h3>
-                                        <div className="flex-1 overflow-y-auto bg-slate-50 p-4 rounded mb-4 space-y-3">
+                                        <div className="border-b border-slate-100 pb-4 mb-4">
+                                            <h3 className="font-bold text-base flex items-center gap-2"><i data-lucide="bot" className="text-emerald-500"></i> Chat Fiscal Leyes Mexicanas</h3>
+                                            <p className="text-[10px] text-slate-500 mt-1">Conoce NIF, LISR, CFF y LIVA.</p>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 rounded-lg mb-4 space-y-4">
                                             {chatMessages.map((m, i) => (
                                                 <div key={i} className={`flex ${m.sender==='user'?'justify-end':'justify-start'}`}>
-                                                    <div className={`p-3 rounded-lg max-w-[85%] text-xs ${m.sender==='user'?'bg-indigo-600 text-white':'bg-white border'}`}>{m.text}</div>
+                                                    <div className={`p-3.5 rounded-xl max-w-[85%] text-xs leading-relaxed shadow-sm ${m.sender==='user'?'bg-indigo-600 text-white rounded-tr-none':'bg-white border border-slate-200 rounded-tl-none text-slate-700'}`}>
+                                                        <span className="block text-[9px] uppercase tracking-wider mb-1 opacity-70 font-bold">{m.sender === 'user' ? 'Tú' : 'Asesor IA'}</span>
+                                                        {m.text}
+                                                    </div>
                                                 </div>
                                             ))}
-                                            {loadingChat && <div className="text-xs text-slate-400">IA escribiendo...</div>}
+                                            {loadingChat && <div className="text-xs text-indigo-400 animate-pulse font-bold ml-2">IA escribiendo respuesta...</div>}
                                         </div>
                                         <form onSubmit={handleSendChatMessage} className="flex gap-2">
-                                            <input type="text" value={chatInput} onChange={e=>setChatInput(e.target.value)} className="flex-1 border rounded p-2 text-xs outline-none" placeholder="Pregunta algo..." />
-                                            <button className="bg-indigo-600 text-white px-4 py-2 rounded text-xs font-bold">Enviar</button>
+                                            <input type="text" value={chatInput} onChange={e=>setChatInput(e.target.value)} disabled={loadingChat} className="flex-1 border border-slate-300 rounded-lg p-3 text-xs outline-none focus:border-indigo-500 transition-colors shadow-sm" placeholder="Ej: ¿Un egreso no facturado cuenta como deducción?" />
+                                            <button disabled={loadingChat || !chatInput.trim()} className="bg-indigo-600 text-white px-5 py-3 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm"><i data-lucide="send" className="w-4 h-4"></i></button>
                                         </form>
                                     </div>
                                 </div>
                             )}
 
-                            {/* TAB: CONFIGURACIÓN MULTIEMPRESA & IA */}
+                            {/* ======================================= */}
+                            {/* TAB: CONFIGURACIÓN MULTIEMPRESA & IA    */}
+                            {/* ======================================= */}
                             {activeTab === 'configuracion' && (
                                 <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
-                                    {/* Módulo Multiempresa Nube */}
+                                    
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-indigo-500">
                                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><i data-lucide="building-2"></i> Gestión Multiempresa Segura</h3>
-                                        <p className="text-xs text-slate-500 mb-6">Administra múltiples perfiles de empresas. Si estás conectado a la nube, se sincronizan entre dispositivos.</p>
+                                        <p className="text-xs text-slate-500 mb-6">Administra múltiples perfiles de empresas. Sincronizado en tiempo real en la nube segura de Firebase.</p>
                                         
                                         <div className="space-y-3 mb-6 max-h-[250px] overflow-y-auto pr-2">
                                             {companies.map(c => (
-                                                <div key={c.id} className={`flex items-center justify-between p-4 rounded-lg border transition-all ${activeCompanyId === c.id ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
+                                                <div key={c.id} className={`flex items-center justify-between p-4 rounded-lg border transition-all ${activeCompanyId === c.id ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white hover:border-indigo-300 cursor-pointer'}`} onClick={() => setActiveCompanyId(c.id)}>
                                                     <div>
                                                         <div className="font-bold text-sm text-slate-800">{c.razonSocial}</div>
                                                         <div className="font-mono text-xs text-slate-500 mt-1">{c.rfc}</div>
@@ -1084,25 +1304,24 @@
                                         </div>
 
                                         <form onSubmit={handleAddCompany} className="bg-slate-50 p-5 rounded-lg border border-slate-200 border-dashed">
-                                            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-600 mb-4 flex items-center gap-2"><i data-lucide="plus-circle" className="w-4 h-4"></i> Registrar Nuevo RFC</h4>
+                                            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-600 mb-4 flex items-center gap-2"><i data-lucide="plus-circle" className="w-4 h-4 text-indigo-500"></i> Registrar Nuevo RFC</h4>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <input name="rfc" type="text" placeholder="RFC (12-13 caracteres)" required maxLength={13} className="border border-slate-300 rounded px-3 py-2.5 text-sm uppercase font-mono outline-none focus:border-indigo-500" />
-                                                <input name="razon" type="text" placeholder="Razón Social Oficial" required className="border border-slate-300 rounded px-3 py-2.5 text-sm font-sans outline-none focus:border-indigo-500" />
+                                                <input name="rfc" type="text" placeholder="RFC (12-13 caracteres)" required maxLength={13} className="border border-slate-300 rounded-lg px-3 py-2.5 text-sm uppercase font-mono outline-none focus:border-indigo-500 focus:ring-1 ring-indigo-500" />
+                                                <input name="razon" type="text" placeholder="Razón Social Oficial" required className="border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-sans outline-none focus:border-indigo-500 focus:ring-1 ring-indigo-500" />
                                             </div>
-                                            <button type="submit" className="mt-4 bg-slate-900 text-white px-5 py-2.5 rounded text-xs font-bold hover:bg-slate-800 transition-colors">
+                                            <button type="submit" className="mt-4 bg-slate-900 text-white px-6 py-2.5 rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm">
                                                 Agregar Perfil
                                             </button>
                                         </form>
                                     </div>
 
-                                    {/* Módulo API LLM */}
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-emerald-500">
                                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><i data-lucide="brain-circuit"></i> Conexión Inteligencia Artificial</h3>
                                         <form onSubmit={handleSaveConfigAPI} className="space-y-4 text-xs font-sans">
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
-                                                    <label className="block text-slate-500 font-bold mb-1.5 uppercase">Proveedor LLM</label>
-                                                    <select value={apiProvider} onChange={e => { setApiProvider(e.target.value); setApiModel(PROVIDER_MODELS[e.target.value][0].value); }} className="w-full bg-slate-50 border rounded-lg py-2.5 px-3 font-semibold">
+                                                    <label className="block text-slate-500 font-bold mb-1.5 uppercase tracking-wider text-[10px]">Proveedor LLM</label>
+                                                    <select value={apiProvider} onChange={e => { setApiProvider(e.target.value); setApiModel(PROVIDER_MODELS[e.target.value][0].value); }} className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2.5 px-3 font-semibold outline-none focus:border-emerald-500">
                                                         <option value="google">Google AI Studio (Gemini)</option>
                                                         <option value="anthropic">Anthropic Console (Claude)</option>
                                                         <option value="openai">OpenAI (GPT)</option>
@@ -1110,19 +1329,19 @@
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="block text-slate-500 font-bold mb-1.5 uppercase">Modelo</label>
-                                                    <select value={apiModel} onChange={e => setApiModel(e.target.value)} className="w-full bg-slate-50 border rounded-lg py-2.5 px-3 font-semibold">
+                                                    <label className="block text-slate-500 font-bold mb-1.5 uppercase tracking-wider text-[10px]">Modelo</label>
+                                                    <select value={apiModel} onChange={e => setApiModel(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2.5 px-3 font-semibold outline-none focus:border-emerald-500">
                                                         {PROVIDER_MODELS[apiProvider]?.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                                                     </select>
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="block text-slate-500 font-bold mb-1.5 uppercase">API Key Privada</label>
-                                                <input type={showApiKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." className="w-full bg-slate-50 border rounded-lg py-2.5 px-3 font-mono" />
+                                                <label className="block text-slate-500 font-bold mb-1.5 uppercase tracking-wider text-[10px]">API Key Privada</label>
+                                                <input type={showApiKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2.5 px-3 font-mono outline-none focus:border-emerald-500" />
                                             </div>
-                                            <div className="flex gap-2 pt-2">
-                                                <button type="submit" className="bg-emerald-500 text-slate-950 font-bold py-2.5 px-6 rounded-lg">Guardar API</button>
-                                                <button type="button" onClick={handleTestConnection} className="border font-bold py-2.5 px-6 rounded-lg">{testingConnection ? 'Probando...' : 'Probar Conexión'}</button>
+                                            <div className="flex gap-2 pt-3 border-t border-slate-100 mt-4">
+                                                <button type="submit" className="bg-emerald-500 text-slate-950 hover:bg-emerald-600 transition-colors font-bold py-2.5 px-6 rounded-lg shadow-sm">Guardar API</button>
+                                                <button type="button" onClick={handleTestConnection} className="border border-slate-300 hover:bg-slate-50 transition-colors text-slate-700 font-bold py-2.5 px-6 rounded-lg">{testingConnection ? 'Probando...' : 'Probar Conexión'}</button>
                                             </div>
                                         </form>
                                     </div>

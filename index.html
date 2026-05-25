@@ -449,6 +449,13 @@
                 triggerToast('🏦 CSV Bancario mapeado en memoria.');
             };
 
+            const handleCatalogUpload = (e) => {
+                if (!e.target.files[0]) return;
+                // En un caso real aquí leeríamos el CSV. Simulamos restableciendo/cargando el catálogo base.
+                setAccounts(DEFAULT_ACCOUNTS);
+                triggerToast('📁 Catálogo de cuentas importado (Simulación).');
+            };
+
             // --- MÉTODOS DE INTELIGENCIA ARTIFICIAL AVANZADA ---
 
             // 1. Dashboard AI Insight

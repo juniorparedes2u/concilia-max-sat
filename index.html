@@ -10,7 +10,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <!-- SheetJS -->
+    <!-- SheetJS (Excel y CSV) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <!-- Firebase SDK (Modular via compat for single-file integration) -->
@@ -71,19 +71,6 @@
             ]
         };
 
-        const DEFAULT_ACCOUNTS = [
-            { codigo: '102-01-001', nombre: 'Bancos Nacionales - BBVA', tipo: 'Activo' },
-            { codigo: '105-01-001', nombre: 'Clientes Nacionales', tipo: 'Activo' },
-            { codigo: '118-01-001', nombre: 'IVA Acreditable Pagado', tipo: 'Activo' },
-            { codigo: '201-01-001', nombre: 'Proveedores', tipo: 'Pasivo' },
-            { codigo: '213-01-001', nombre: 'IVA Trasladado Cobrado', tipo: 'Pasivo' },
-            { codigo: '401-01-001', nombre: 'Ingresos por Servicios', tipo: 'Ingreso' },
-            { codigo: '601-01-001', nombre: 'Gastos de Oficina y Papelería', tipo: 'Egreso' },
-            { codigo: '601-01-002', nombre: 'Gastos de Mantenimiento General', tipo: 'Egreso' },
-            { codigo: '601-01-003', nombre: 'Licenciamiento de Software', tipo: 'Egreso' },
-            { codigo: '601-01-004', nombre: 'Servicios de Internet y Telecom', tipo: 'Egreso' }
-        ];
-
         // --- FUNCIONES AUXILIARES ---
         const safeParseJSON = (text) => {
             if (!text) return null;
@@ -140,9 +127,13 @@
             const conceptos = Array.from(xmlDoc.getElementsByTagName('*')).filter(t => (t.localName || t.tagName.split(':').pop()).toLowerCase() === 'concepto');
             const conceptoStr = conceptos.map(c => getAttrIgnoreCase(c, "Descripcion")).filter(Boolean).join(", ");
 
+            // Normalización de fecha a YYYY-MM-DD
+            let fechaRaw = getAttrIgnoreCase(comp, "Fecha") || new Date().toISOString();
+            let fecha = fechaRaw.substring(0, 10);
+
             return {
                 uuid,
-                fecha: getAttrIgnoreCase(comp, "Fecha")?.substring(0, 10) || new Date().toISOString().substring(0, 10),
+                fecha,
                 rfcEmisor, nombreEmisor: getAttrIgnoreCase(emisor, "Nombre") || "Proveedor",
                 rfcReceptor, nombreReceptor: getAttrIgnoreCase(receptor, "Nombre") || "Cliente",
                 total: parseFloat(getAttrIgnoreCase(comp, "Total") || 0),
@@ -150,8 +141,6 @@
                 iva: parseFloat(getAttrIgnoreCase(comp, "Total") || 0) - parseFloat(getAttrIgnoreCase(comp, "SubTotal") || 0),
                 tipo,
                 concepto: conceptoStr,
-                metodoPago: getAttrIgnoreCase(comp, "MetodoPago") || "PUE",
-                formaPago: getAttrIgnoreCase(comp, "FormaPago") || "03",
                 status: 'Vigente'
             };
         };
@@ -204,10 +193,13 @@
             const [db, setDb] = useState(null);
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'conciliamax-master';
 
-            // --- ESTADOS MULTIEMPRESA ---
+            // --- ESTADOS MULTIEMPRESA Y PERIODO GLOBAL ---
             const [companies, setCompanies] = useState([{ id: 'default', rfc: 'SIM100812NP3', razonSocial: 'SIMETRICAL S.A. DE C.V.' }]);
             const [activeCompanyId, setActiveCompanyId] = useState('default');
             const activeCompany = useMemo(() => companies.find(c => c.id === activeCompanyId) || companies[0], [companies, activeCompanyId]);
+            
+            const [globalMonth, setGlobalMonth] = useState('Todos');
+            const [globalYear, setGlobalYear] = useState('Todos');
 
             // --- ESTADOS DE NAVEGACIÓN ---
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -215,11 +207,12 @@
             const [toast, setToast] = useState(null);
             const triggerToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 4000); };
 
-            // --- ESTADOS DE DATOS EN MEMORIA (Archivos Temporales) ---
+            // --- ESTADOS DE DATOS EN MEMORIA ---
             const [cfdis, setCfdis] = useState([]);
             const [bankMovements, setBankMovements] = useState([]);
             const [matches, setMatches] = useState({});
-            const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
+            const [accounts, setAccounts] = useState([]); // INICIA EN BLANCO, SIN DUMMY DATA
+            const [manualPolicies, setManualPolicies] = useState([]); // PÓLIZAS DE DIARIO
 
             // --- ESTADOS PERSISTENTES (Control de Gastos Meta) ---
             const [gastosMeta, setGastosMeta] = useState({});
@@ -231,26 +224,24 @@
             const [showApiKey, setShowApiKey] = useState(false);
             const [testingConnection, setTestingConnection] = useState(false);
             
-            const [aiSuggestions, setAiSuggestions] = useState({}); 
-            const [loadingAiSug, setLoadingAiSug] = useState({}); 
             const [bulkAiLoading, setBulkAiLoading] = useState(false);
-            
             const [aiReport, setAiReport] = useState("");
             const [loadingAiReport, setLoadingAiReport] = useState(false);
-            
             const [dashboardInsight, setDashboardInsight] = useState(null);
             const [loadingInsight, setLoadingInsight] = useState(false);
-
             const [chatMessages, setChatMessages] = useState([{ sender: 'ia', text: '¡Hola! Soy tu Consultor Fiscal IA. Conozco las leyes vigentes del SAT. ¿En qué te puedo asesorar hoy?' }]);
             const [chatInput, setChatInput] = useState("");
             const [loadingChat, setLoadingChat] = useState(false);
 
-            // Filtros y UI Adicional
+            // --- ESTADOS DE FILTROS LOCALES ---
+            const [xmlSearchTerm, setXmlSearchTerm] = useState('');
             const [cfdiTypeFilter, setCfdiTypeFilter] = useState('Todos');
-            const [bankMatchedFilter, setBankMatchedFilter] = useState('Todos');
+            const [policyListFilter, setPolicyListFilter] = useState('Todos');
             const [startingFolio, setStartingFolio] = useState(1);
             const [policyTypeMode, setPolicyTypeMode] = useState('auto');
             const [bankAccountCode, setBankAccountCode] = useState('102-01-001');
+            const [showManualPolicyForm, setShowManualPolicyForm] = useState(false);
+            const [newManualPolicy, setNewManualPolicy] = useState({ fecha: new Date().toISOString().split('T')[0], concepto: 'Provisión de Gastos', importe: '', cuentaCargo: '', cuentaAbono: '' });
 
             // --- 1. INICIALIZAR FIREBASE Y AUTH ---
             useEffect(() => {
@@ -304,6 +295,51 @@
 
             // Re-render Icons
             useEffect(() => { if (window.lucide) window.lucide.createIcons(); });
+
+            // --- MEMOS DE FILTRADO GLOBAL (EL CORAZÓN DEL SISTEMA) ---
+            // Solo mostramos los datos que corresponden al Mes y Año seleccionados.
+            
+            const activeCfdis = useMemo(() => {
+                return cfdis.filter(c => {
+                    if (globalYear !== 'Todos' && !c.fecha.startsWith(globalYear)) return false;
+                    if (globalMonth !== 'Todos' && c.fecha.substring(5, 7) !== globalMonth) return false;
+                    return true;
+                });
+            }, [cfdis, globalYear, globalMonth]);
+
+            const activeBankMovements = useMemo(() => {
+                return bankMovements.filter(m => {
+                    if (globalYear !== 'Todos' && !m.fecha.startsWith(globalYear)) return false;
+                    if (globalMonth !== 'Todos' && m.fecha.substring(5, 7) !== globalMonth) return false;
+                    return true;
+                });
+            }, [bankMovements, globalYear, globalMonth]);
+
+            const activeManualPolicies = useMemo(() => {
+                return manualPolicies.filter(p => {
+                    if (globalYear !== 'Todos' && !p.fecha.startsWith(globalYear)) return false;
+                    if (globalMonth !== 'Todos' && p.fecha.substring(5, 7) !== globalMonth) return false;
+                    return true;
+                });
+            }, [manualPolicies, globalYear, globalMonth]);
+
+            // Filtros adicionales para la tabla de XMLs
+            const filteredCfdis = useMemo(() => {
+                return activeCfdis.filter(c => {
+                    if (cfdiTypeFilter === 'Ingreso' && c.tipo !== 'Emitido') return false;
+                    if (cfdiTypeFilter === 'Egreso' && c.tipo !== 'Recibido') return false;
+                    if (cfdiTypeFilter === 'Diario' && c.tipo !== 'Pago' && c.tipo !== 'Nómina') return false;
+                    
+                    if (xmlSearchTerm) {
+                        const term = xmlSearchTerm.toLowerCase();
+                        if (!c.uuid.toLowerCase().includes(term) && !c.nombreEmisor.toLowerCase().includes(term) && !c.rfcEmisor.toLowerCase().includes(term)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            }, [activeCfdis, cfdiTypeFilter, xmlSearchTerm]);
+
 
             // --- MANEJADORES DE LA NUBE Y ESTADO ---
             const handleAddCompany = async (e) => {
@@ -402,7 +438,7 @@
                 finally { setTestingConnection(false); }
             };
 
-            // --- CARGA DE DATOS LOCALES ---
+            // --- CARGA DE DATOS LOCALES REALES (SIN DUMMY) ---
             const handleLocalXmlUpload = async (e) => {
                 const files = Array.from(e.target.files);
                 if (!files.length) return;
@@ -438,31 +474,117 @@
             const handleBankUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                const DEMO_BANK_MOVEMENTS = [
-                    { id: 1, fecha: '2025-12-04', referencia: 'ARRENDAMIENTO ASIA', descripcion: 'PAGO ASIA', cargo: 0, abono: 3340.96, tipo: 'Ingreso' },
-                    { id: 2, fecha: '2025-12-09', referencia: 'PROEPTA', descripcion: 'MANTENIMIENTO', cargo: 180.09, abono: 0, tipo: 'Egreso' },
-                    { id: 3, fecha: '2025-12-18', referencia: 'WALMART MX', descripcion: 'COMPRA PAPELERIA', cargo: 332.48, abono: 0, tipo: 'Egreso' },
-                    { id: 4, fecha: '2025-12-16', referencia: 'RILE CUERNAVACA', descripcion: 'SPEI RECIBIDO', cargo: 0, abono: 16851.74, tipo: 'Ingreso' },
-                    { id: 5, fecha: '2026-04-15', referencia: 'PAYPAL *GOOGLE', descripcion: 'SERVICIOS NUBE', cargo: 1753.92, abono: 0, tipo: 'Egreso' }
-                ];
-                setBankMovements(DEMO_BANK_MOVEMENTS);
-                triggerToast('🏦 CSV Bancario mapeado en memoria.');
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const data = XLSX.utils.sheet_to_json(ws);
+                        
+                        let idCounter = bankMovements.length + 1;
+                        const parsedMovements = data.map((row) => {
+                            // Búsqueda difusa de columnas para soportar Excel, CSV, TXT
+                            const cargo = parseFloat(row.Cargo || row.cargo || row.CARGO || row.Retiro || row.retiro || row['Cargo/Retiro'] || 0);
+                            const abono = parseFloat(row.Abono || row.abono || row.ABONO || row.Deposito || row.deposito || row['Abono/Deposito'] || 0);
+                            
+                            // Normalización de Fecha
+                            let fechaRaw = row.Fecha || row.fecha || row.FECHA || row.Date || row.date || new Date().toISOString().split('T')[0];
+                            if(typeof fechaRaw === 'number') { // Formato Excel serial
+                                fechaRaw = new Date(Math.round((fechaRaw - 25569)*86400*1000)).toISOString().split('T')[0];
+                            } else if (typeof fechaRaw === 'string' && fechaRaw.includes('/')) { // DD/MM/YYYY a YYYY-MM-DD
+                                const parts = fechaRaw.split('/');
+                                if(parts.length === 3) fechaRaw = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                            }
+
+                            const referencia = row.Referencia || row.referencia || row.REFERENCIA || row.Ref || `REF-${idCounter}`;
+                            const descripcion = row.Descripcion || row.descripcion || row.DESCRIPCION || row.Concepto || row.concepto || 'Movimiento Bancario';
+
+                            return { id: idCounter++, fecha: fechaRaw.substring(0,10), referencia, descripcion, cargo, abono, tipo: cargo > 0 ? 'Egreso' : 'Ingreso' };
+                        }).filter(m => m.cargo > 0 || m.abono > 0);
+
+                        if (parsedMovements.length > 0) {
+                            setBankMovements(prev => [...prev, ...parsedMovements]);
+                            triggerToast(`🏦 ${parsedMovements.length} movimientos bancarios importados al sistema.`);
+                        } else {
+                            triggerToast('⚠️ El archivo no contiene columnas de Cargo o Abono reconocibles.');
+                        }
+                    } catch (error) {
+                        triggerToast('❌ Error leyendo extracto: ' + error.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
             };
 
             const handleCatalogUpload = (e) => {
-                if (!e.target.files[0]) return;
-                // En un caso real aquí leeríamos el CSV. Simulamos restableciendo/cargando el catálogo base.
-                setAccounts(DEFAULT_ACCOUNTS);
-                triggerToast('📁 Catálogo de cuentas importado (Simulación).');
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const data = XLSX.utils.sheet_to_json(ws);
+                        
+                        const parsedAccounts = data.map(row => {
+                            const vals = Object.values(row);
+                            return {
+                                codigo: row.Codigo || row.codigo || row.CÓDIGO || row.Cuenta || row.cuenta || vals[0]?.toString(),
+                                nombre: row.Nombre || row.nombre || row.NOMBRE || row.Descripcion || row.descripcion || vals[1]?.toString(),
+                                tipo: row.Tipo || row.tipo || row.TIPO || 'Egreso'
+                            };
+                        }).filter(a => a.codigo && a.nombre);
+
+                        if (parsedAccounts.length > 0) {
+                            // Sumamos al catálogo existente en memoria
+                            setAccounts(prev => {
+                                const newAccs = [...prev];
+                                parsedAccounts.forEach(pa => { if(!newAccs.find(na => na.codigo === pa.codigo)) newAccs.push(pa); });
+                                return newAccs;
+                            });
+                            triggerToast(`📁 ${parsedAccounts.length} cuentas procesadas.`);
+                        } else {
+                            triggerToast('⚠️ No se detectó Código y Nombre en las columnas.');
+                        }
+                    } catch (error) {
+                        triggerToast('❌ Error leyendo catálogo: ' + error.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+                e.target.value = null; // reset input
+            };
+
+            // --- MANEJADOR DE PÓLIZAS MANUALES (DIARIO) ---
+            const handleAddManualPolicy = (e) => {
+                e.preventDefault();
+                const { fecha, concepto, importe, cuentaCargo, cuentaAbono } = newManualPolicy;
+                if(!fecha || !concepto || importe <= 0 || !cuentaCargo || !cuentaAbono) return triggerToast("Completa los datos correctamente.");
+                
+                const newPol = {
+                    id: 'MANUAL-' + Date.now(),
+                    fecha,
+                    tipo: 'Diario',
+                    numero: 9000 + manualPolicies.length,
+                    concepto,
+                    uuidAsociado: 'SIN_XML_DIARIO',
+                    movimientos: [
+                        { cuenta: cuentaCargo, nombre: accounts.find(a => a.codigo === cuentaCargo)?.nombre || 'Cargo', cargo: parseFloat(importe), abono: 0, rfc: '' },
+                        { cuenta: cuentaAbono, nombre: accounts.find(a => a.codigo === cuentaAbono)?.nombre || 'Abono', cargo: 0, abono: parseFloat(importe), rfc: '' }
+                    ]
+                };
+                setManualPolicies([...manualPolicies, newPol]);
+                setNewManualPolicy({ ...newManualPolicy, importe: '', cuentaCargo: '', cuentaAbono: '' });
+                setShowManualPolicyForm(false);
+                triggerToast('📝 Póliza de diario manual registrada exitosamente.');
             };
 
             // --- MÉTODOS DE INTELIGENCIA ARTIFICIAL AVANZADA ---
 
-            // 1. Dashboard AI Insight
             const generateDashboardInsight = async () => {
                 setLoadingInsight(true);
-                const prompt = `Analiza la salud financiera de ${activeCompany.razonSocial} (RFC: ${activeCompany.rfc}).
-Datos del mes:
+                const prompt = `Analiza la salud financiera de ${activeCompany.razonSocial} (RFC: ${activeCompany.rfc}) para el periodo seleccionado.
+Datos del periodo:
 - Ingresos Banco: $${dashboardStats.totalBancosIngreso}
 - Egresos Banco: $${dashboardStats.totalBancosEgreso}
 - Facturado Emitido (Ingreso CFDI): $${dashboardStats.totalCfdisEmitidos}
@@ -474,22 +596,21 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                 try {
                     const res = await callAiAPI(prompt, sysPrompt);
                     setDashboardInsight(res);
-                } catch (error) { triggerToast("Error generando Insight: Configura la API."); } 
+                } catch (error) { triggerToast("Error generando Insight: Verifica tu conexión a la IA."); } 
                 finally { setLoadingInsight(false); }
             };
 
-            // 2. Conciliación Inteligente Local
             const triggerSmartMatch = () => {
-                if (!bankMovements.length || !cfdis.length) return triggerToast('Requiere Bancos y XMLs para operar.');
+                if (!activeBankMovements.length || !activeCfdis.length) return triggerToast('Requiere Bancos y XMLs cargados para operar.');
                 const newMatches = { ...matches };
                 let matchCount = 0;
 
-                bankMovements.forEach(movement => {
+                activeBankMovements.forEach(movement => {
                     if (newMatches[movement.id]) return;
                     const amount = movement.cargo > 0 ? movement.cargo : movement.abono;
                     const type = movement.cargo > 0 ? 'Recibido' : 'Emitido';
 
-                    const potentialXml = cfdis.find(cfdi => {
+                    const potentialXml = activeCfdis.find(cfdi => {
                         const sameType = cfdi.tipo === type;
                         const sameAmount = Math.abs(cfdi.total - amount) < 0.05;
                         const free = !Object.values(newMatches).includes(cfdi.uuid);
@@ -502,12 +623,13 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                     if (potentialXml) { newMatches[movement.id] = potentialXml.uuid; matchCount++; }
                 });
                 setMatches(newMatches);
-                triggerToast(`🔗 Automatch: ${matchCount} movimientos cruzados.`);
+                triggerToast(`🔗 Automatch: ${matchCount} movimientos cruzados automáticamente.`);
             };
 
-            // 3. Auto-Clasificación Masiva (Bulk AI) - NUEVA FUNCIONALIDAD
             const handleBulkAiCategorization = async () => {
-                const uncategorized = cfdis.filter(c => c.tipo === 'Recibido' && !gastosMeta[c.uuid]?.ctaContable).slice(0, 15);
+                if(accounts.length === 0) return triggerToast('⚠️ Primero debes cargar tu catálogo contable.');
+                
+                const uncategorized = activeCfdis.filter(c => c.tipo === 'Recibido' && !gastosMeta[c.uuid]?.ctaContable).slice(0, 15);
                 if (uncategorized.length === 0) return triggerToast('Todos los gastos mostrados ya tienen cuenta contable.');
 
                 setBulkAiLoading(true);
@@ -528,22 +650,18 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                 updateGastoMeta(item.uuid, 'etiqueta', item.etiquetaCorta);
                             }
                         });
-                        triggerToast(`✨ ¡Magia! ${parsed.resultados.length} gastos clasificados por la IA.`);
+                        triggerToast(`✨ ¡Éxito! ${parsed.resultados.length} gastos clasificados por la IA.`);
                     } else {
                         triggerToast('Error: El modelo no devolvió la estructura esperada.');
                     }
-                } catch (error) {
-                    triggerToast('❌ Error Bulk AI: ' + error.message);
-                } finally {
-                    setBulkAiLoading(false);
-                }
+                } catch (error) { triggerToast('❌ Error Bulk AI: ' + error.message); } 
+                finally { setBulkAiLoading(false); }
             };
 
-            // 4. Reporte y Chat
             const handleGenerateFiscalReport = async () => {
                 setLoadingAiReport(true);
                 const sysPrompt = "Eres un Auditor Superior de Hacienda (SAT) de México. Reporte profesional markdown.";
-                const userPrompt = `Genera un reporte de salud fiscal para RFC: ${activeCompany.rfc}. Ingresos Banco: $${dashboardStats.totalBancosIngreso}, Egresos Banco: $${dashboardStats.totalBancosEgreso}. Facturación Emitida: $${dashboardStats.totalCfdisEmitidos}, Facturación Recibida: $${dashboardStats.totalCfdisRecibidos}. Evalúa discrepancias e IVA.`;
+                const userPrompt = `Genera un reporte de salud fiscal para RFC: ${activeCompany.rfc}. Periodo analizado: ${globalMonth}/${globalYear}. Ingresos Banco: $${dashboardStats.totalBancosIngreso}, Egresos Banco: $${dashboardStats.totalBancosEgreso}. Facturación Emitida: $${dashboardStats.totalCfdisEmitidos}, Facturación Recibida: $${dashboardStats.totalCfdisRecibidos}. Evalúa posibles discrepancias.`;
                 try {
                     const report = await callAiAPI(userPrompt, sysPrompt);
                     setAiReport(report);
@@ -569,27 +687,29 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                 finally { setLoadingChat(false); }
             };
 
-            // --- EXPORTACIONES Y CALCULOS ---
+            // --- CÁLCULOS ESTADÍSTICOS (DASHBOARD) LIGADOS AL PERIODO GLOBAL ---
             const dashboardStats = useMemo(() => {
-                const totalMovements = bankMovements.length;
-                const totalMatched = Object.keys(matches).length;
-                return {
-                    totalMovements, totalMatched,
-                    conciliationRate: totalMovements > 0 ? Math.round((totalMatched / totalMovements) * 100) : 0,
-                    totalBancosIngreso: bankMovements.reduce((sum, item) => sum + (item.abono || 0), 0),
-                    totalBancosEgreso: bankMovements.reduce((sum, item) => sum + (item.cargo || 0), 0),
-                    totalCfdisEmitidos: cfdis.filter(c => c.tipo === 'Emitido').reduce((sum, item) => sum + item.total, 0),
-                    totalCfdisRecibidos: cfdis.filter(c => c.tipo === 'Recibido').reduce((sum, item) => sum + item.total, 0),
-                    totalCfdisNomina: cfdis.filter(c => c.tipo === 'Nómina').reduce((sum, item) => sum + item.total, 0)
-                };
-            }, [bankMovements, cfdis, matches]);
+                const totalMovements = activeBankMovements.length;
+                let matchedInPeriod = 0;
+                activeBankMovements.forEach(m => { if(matches[m.id]) matchedInPeriod++; });
 
+                return {
+                    totalMovements, totalMatched: matchedInPeriod,
+                    conciliationRate: totalMovements > 0 ? Math.round((matchedInPeriod / totalMovements) * 100) : 0,
+                    totalBancosIngreso: activeBankMovements.reduce((sum, item) => sum + (item.abono || 0), 0),
+                    totalBancosEgreso: activeBankMovements.reduce((sum, item) => sum + (item.cargo || 0), 0),
+                    totalCfdisEmitidos: activeCfdis.filter(c => c.tipo === 'Emitido').reduce((sum, item) => sum + item.total, 0),
+                    totalCfdisRecibidos: activeCfdis.filter(c => c.tipo === 'Recibido').reduce((sum, item) => sum + item.total, 0),
+                };
+            }, [activeBankMovements, activeCfdis, matches]);
+
+            // --- GENERADOR DE PÓLIZAS AUTOMATIZADO ---
             const generatedPolizas = useMemo(() => {
                 const polizas = [];
                 let counter = { 'Ingreso': startingFolio, 'Egreso': startingFolio, 'Diario': startingFolio };
                 const ctaIvaAc = '118-01-001', ctaIvaTr = '213-01-001';
 
-                bankMovements.forEach((mov) => {
+                activeBankMovements.forEach((mov) => {
                     const matchedUuid = matches[mov.id];
                     const cfdi = matchedUuid ? cfdis.find(c => c.uuid === matchedUuid) : null;
                     const amount = mov.cargo > 0 ? mov.cargo : mov.abono;
@@ -598,30 +718,42 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                     const entries = [];
 
                     if (mov.cargo > 0) { // Egreso
-                        let ctaCargo = cfdi && gastosMeta[cfdi.uuid]?.ctaContable ? gastosMeta[cfdi.uuid].ctaContable : '601-01-001';
-                        let nombreCargo = accounts.find(a => a.codigo === ctaCargo)?.nombre || 'Gasto General';
+                        let ctaCargo = cfdi && gastosMeta[cfdi.uuid]?.ctaContable ? gastosMeta[cfdi.uuid].ctaContable : 'Cta. Gastos No Asignada';
+                        let nombreCargo = accounts.find(a => a.codigo === ctaCargo)?.nombre || 'Gastos Diversos';
                         const subtotal = cfdi ? cfdi.subtotal : (amount / 1.16);
                         const iva = cfdi ? cfdi.iva : (amount - subtotal);
                         entries.push({ cuenta: ctaCargo, nombre: nombreCargo, cargo: subtotal, abono: 0, rfc: cfdi ? cfdi.rfcEmisor : '' });
                         entries.push({ cuenta: ctaIvaAc, nombre: 'IVA Acreditable Pagado', cargo: iva, abono: 0, rfc: cfdi ? cfdi.rfcEmisor : '' });
                         entries.push({ cuenta: bankAccountCode, nombre: 'Bancos Nacionales', cargo: 0, abono: amount, rfc: '' });
                     } else { // Ingreso
-                        let ctaAbono = '401-01-001'; 
+                        let ctaAbono = 'Cta. Ingresos No Asignada'; 
                         const subtotal = cfdi ? cfdi.subtotal : (amount / 1.16);
                         const iva = cfdi ? cfdi.iva : (amount - subtotal);
                         entries.push({ cuenta: bankAccountCode, nombre: 'Bancos Nacionales', cargo: amount, abono: 0, rfc: '' });
-                        entries.push({ cuenta: ctaAbono, nombre: 'Ingresos', cargo: 0, abono: subtotal, rfc: cfdi ? cfdi.rfcReceptor : '' });
-                        entries.push({ cuenta: ctaIvaTr, nombre: 'IVA Trasladado', cargo: 0, abono: iva, rfc: cfdi ? cfdi.rfcReceptor : '' });
+                        entries.push({ cuenta: ctaAbono, nombre: 'Ventas/Ingresos', cargo: 0, abono: subtotal, rfc: cfdi ? cfdi.rfcReceptor : '' });
+                        entries.push({ cuenta: ctaIvaTr, nombre: 'IVA Trasladado Cobrado', cargo: 0, abono: iva, rfc: cfdi ? cfdi.rfcReceptor : '' });
                     }
                     polizas.push({ id: mov.id, fecha: mov.fecha, tipo: tipoPoliza, numero: counter[tipoPoliza]++, concepto, movimientos: entries, uuidAsociado: cfdi ? cfdi.uuid : 'SIN_XML' });
                 });
                 return polizas;
-            }, [bankMovements, matches, cfdis, bankAccountCode, accounts, startingFolio, policyTypeMode, gastosMeta]);
+            }, [activeBankMovements, matches, cfdis, bankAccountCode, accounts, startingFolio, policyTypeMode, gastosMeta]);
 
+            const allPolizas = useMemo(() => {
+                const combined = [...generatedPolizas, ...activeManualPolicies];
+                // Ordenar por fecha y número de póliza
+                return combined.sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+            }, [generatedPolizas, activeManualPolicies]);
+
+            const displayedPolizas = useMemo(() => {
+                if (policyListFilter === 'Todos') return allPolizas;
+                return allPolizas.filter(p => p.tipo === policyListFilter);
+            }, [allPolizas, policyListFilter]);
+
+            // --- EXPORTACIONES (EXCEL y TXT CONTPAQI) ---
             const exportToExcelGastos = () => {
                 if (!window.XLSX) return triggerToast('Error: Biblioteca XLSX no cargada.');
-                const recibidos = cfdis.filter(c => c.tipo === 'Recibido');
-                if (recibidos.length === 0) return triggerToast('No hay gastos para exportar.');
+                const recibidos = activeCfdis.filter(c => c.tipo === 'Recibido');
+                if (recibidos.length === 0) return triggerToast('No hay gastos en el periodo para exportar.');
                 const data = recibidos.map(c => {
                     const meta = gastosMeta[c.uuid] || {};
                     const matchId = Object.keys(matches).find(k => matches[k] === c.uuid);
@@ -644,53 +776,37 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                 const ws = XLSX.utils.json_to_sheet(data);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "Control_Gastos");
-                XLSX.writeFile(wb, `Control_Gastos_${activeCompany.rfc}_${new Date().toISOString().split('T')[0]}.xlsx`);
+                XLSX.writeFile(wb, `Gastos_${activeCompany.rfc}_${globalYear}_${globalMonth}.xlsx`);
                 triggerToast('📊 Archivo de Control de Gastos exportado fielmente.');
             };
 
-            const exportToExcelConsolidated = () => {
-                if (!window.XLSX) return triggerToast('⚠️ Error: Biblioteca Excel XLSX no localizada.');
-                const wb = XLSX.utils.book_new();
-                
-                ['Emitido', 'Recibido', 'Nómina', 'Pago'].forEach(tipoStr => {
-                    const sheetData = cfdis.filter(c => c.tipo === tipoStr).map(c => ({
-                        'XML': `${c.uuid.substring(0, 8)}.xml`,
-                        'Rfc Emisor': c.rfcEmisor, 'Nombre Emisor': c.nombreEmisor,
-                        'Rfc Receptor': c.rfcReceptor, 'Nombre Receptor': c.nombreReceptor,
-                        'Fecha': c.fecha, 'Sub Total': c.subtotal, 'IVA': c.iva, 'Total': c.total,
-                        'UUID': c.uuid, 'Conceptos': c.concepto
-                    }));
-                    if(sheetData.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetData), tipoStr);
-                });
-                if(wb.SheetNames.length === 0) return triggerToast('No hay datos para exportar.');
-                XLSX.writeFile(wb, `Reporte_XMLs_${activeCompany.rfc}.xlsx`);
-                triggerToast('📊 Reporte Consolidado SAT exportado.');
-            };
-
             const downloadContpaqiPolizas = () => {
-                if (generatedPolizas.length === 0) return triggerToast('Realiza la conciliación para generar pólizas.');
+                if (allPolizas.length === 0) return triggerToast('Realiza la conciliación o agrega pólizas de diario para exportar.');
                 let txtContent = "";
-                generatedPolizas.forEach(p => {
+                allPolizas.forEach(p => {
                     const tipoNum = p.tipo === 'Ingreso' ? '1' : p.tipo === 'Egreso' ? '2' : '3';
                     const cleanConcepto = p.concepto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 99);
                     txtContent += `P  ${p.fecha.replace(/-/g, '')}   ${tipoNum}        ${p.numero} 0 0.00 ${cleanConcepto}\n`;
                     p.movimientos.forEach(m => {
                         const amount = m.cargo > 0 ? m.cargo : m.abono;
-                        txtContent += `M  ${m.cuenta.replace(/-/g, '').padEnd(20, ' ')} ${p.uuidAsociado.substring(0,8).padEnd(10, ' ')} ${m.cargo > 0 ? '0' : '1'} ${amount.toFixed(2).padStart(15, ' ')} 0.00 ${cleanConcepto} ${p.uuidAsociado.padEnd(36, ' ')}\n`;
+                        const ctaStr = m.cuenta.replace(/-/g, '').padEnd(20, ' ');
+                        const uuidPad = p.uuidAsociado.includes('SIN_XML') ? ''.padEnd(36, ' ') : p.uuidAsociado.padEnd(36, ' ');
+                        const uuidCorto = p.uuidAsociado.includes('SIN_XML') ? 'MANUAL    ' : p.uuidAsociado.substring(0,8).padEnd(10, ' ');
+                        txtContent += `M  ${ctaStr} ${uuidCorto} ${m.cargo > 0 ? '0' : '1'} ${amount.toFixed(2).padStart(15, ' ')} 0.00 ${cleanConcepto} ${uuidPad}\n`;
                     });
                 });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(new Blob([txtContent], { type: 'text/plain;charset=utf-8' }));
-                link.download = `Polizas_CONTPAQI_${activeCompany.rfc}.txt`;
+                link.download = `Polizas_CONTPAQI_${activeCompany.rfc}_${globalYear}_${globalMonth}.txt`;
                 link.click(); triggerToast('✅ Descargado TXT para CONTPAQi.');
             };
 
             return (
                 <div className="flex-1 flex flex-col h-screen overflow-hidden">
-                    {/* --- HEADER MULTIEMPRESA --- */}
+                    {/* --- HEADER MULTIEMPRESA Y PERIODO GLOBAL --- */}
                     <header className="bg-slate-900 text-white shrink-0 z-40 shadow-md">
-                        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
+                        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 w-full md:w-auto">
                                 <div className="bg-emerald-500 text-slate-950 p-2 rounded-lg font-bold shadow-lg shadow-emerald-500/20">
                                     <i data-lucide="calculator" className="w-5 h-5"></i>
                                 </div>
@@ -702,20 +818,40 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                 </div>
                             </div>
                             
-                            <div className="flex items-center gap-4 text-sm font-sans">
-                                <div className="flex flex-col items-end">
-                                    <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Empresa Activa (RFC)</span>
+                            <div className="flex flex-wrap items-center justify-end gap-3 text-sm font-sans w-full md:w-auto">
+                                <div className="flex flex-col items-start md:items-end">
+                                    <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold mb-0.5">Empresa Activa (RFC)</span>
                                     <select 
-                                        className="bg-slate-800 text-white border border-slate-700 rounded px-2 py-1 outline-none text-xs font-bold max-w-[200px] sm:max-w-xs truncate cursor-pointer hover:bg-slate-700 transition-colors"
+                                        className="bg-slate-800 text-white border border-slate-700 rounded-lg px-3 py-1.5 outline-none text-xs font-bold max-w-[200px] sm:max-w-xs truncate cursor-pointer hover:bg-slate-700 transition-colors shadow-sm"
                                         value={activeCompanyId}
                                         onChange={(e) => {
                                             setActiveCompanyId(e.target.value);
-                                            setCfdis([]); setBankMovements([]); setMatches([]); setDashboardInsight(null);
-                                            triggerToast('Cambiando contexto a empresa seleccionada.');
+                                            setCfdis([]); setBankMovements([]); setMatches([]); setManualPolicies([]); setAccounts([]); setDashboardInsight(null);
+                                            triggerToast('Cambiando contexto a empresa seleccionada. Datos de RAM reseteados.');
                                         }}
                                     >
                                         {companies.map(c => <option key={c.id} value={c.id}>{c.rfc} - {c.razonSocial}</option>)}
                                     </select>
+                                </div>
+
+                                {/* SELECTOR GLOBAL DE PERIODO */}
+                                <div className="h-8 w-px bg-slate-700 hidden md:block mx-1"></div>
+                                
+                                <div className="flex flex-col items-start md:items-end">
+                                    <span className="text-[9px] text-emerald-400 uppercase tracking-wider font-bold mb-0.5">Periodo Global</span>
+                                    <div className="flex gap-2">
+                                        <select value={globalMonth} onChange={e => setGlobalMonth(e.target.value)} className="bg-slate-800 text-white border border-slate-700 rounded-lg px-2 py-1.5 outline-none text-xs font-bold cursor-pointer hover:bg-slate-700 transition-colors shadow-sm">
+                                            <option value="Todos">Todo el Año</option>
+                                            <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
+                                            <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
+                                            <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
+                                            <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+                                        </select>
+                                        <select value={globalYear} onChange={e => setGlobalYear(e.target.value)} className="bg-slate-800 text-white border border-slate-700 rounded-lg px-2 py-1.5 outline-none text-xs font-bold cursor-pointer hover:bg-slate-700 transition-colors shadow-sm">
+                                            <option value="Todos">Historico</option>
+                                            <option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -726,12 +862,12 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                         <div className="max-w-7xl mx-auto px-4 flex space-x-1 overflow-x-auto no-scrollbar">
                             {[
                                 { id: 'dashboard', icon: 'layout-dashboard', label: 'Resumen' },
-                                { id: 'sat', icon: 'folder-open', label: 'Importar XML', badge: cfdis.length },
+                                { id: 'sat', icon: 'folder-open', label: 'Importar XML', badge: activeCfdis.length },
                                 { id: 'gastos', icon: 'clipboard-list', label: 'Control Gastos', color: 'border-amber-500 text-amber-600 bg-amber-50 rounded-t-md' },
-                                { id: 'bancos', icon: 'landmark', label: 'Bancos', badge: bankMovements.length },
+                                { id: 'bancos', icon: 'landmark', label: 'Bancos', badge: activeBankMovements.length },
                                 { id: 'conciliacion', icon: 'git-compare', label: 'Conciliación', badge: Object.keys(matches).length },
-                                { id: 'polizas', icon: 'file-spreadsheet', label: 'Pólizas' },
-                                { id: 'catalogo', icon: 'book-open', label: 'Catálogo' },
+                                { id: 'polizas', icon: 'file-spreadsheet', label: 'Pólizas', badge: allPolizas.length },
+                                { id: 'catalogo', icon: 'book-open', label: 'Catálogo', badge: accounts.length },
                                 { id: 'consultor-ia', icon: 'bot', label: 'Consultor IA', color: 'border-indigo-500 text-indigo-600' },
                                 { id: 'configuracion', icon: 'settings', label: 'Configuración', color: 'border-slate-800 text-slate-800' }
                             ].map(tab => (
@@ -757,38 +893,17 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                         <div className="max-w-7xl mx-auto space-y-6">
 
                             {/* ======================================= */}
-                            {/* TAB: DASHBOARD (MANUAL DE USO + ESTADO + IA) */}
+                            {/* TAB: DASHBOARD (MANUAL DE USO + ESTADO) */}
                             {/* ======================================= */}
                             {activeTab === 'dashboard' && (
                                 <div className="space-y-6 animate-fade-in">
                                     
-                                    {/* Header Banner */}
                                     <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-6 text-white shadow-lg flex flex-col md:flex-row justify-between items-center gap-4 border border-slate-700">
                                         <div>
                                             <h2 className="text-2xl font-bold">Automatización Fiscal Integral</h2>
                                             <p className="text-slate-300 text-sm mt-1 max-w-2xl font-sans">
                                                 Cierre de periodo contable para <strong className="text-emerald-400">{activeCompany.razonSocial}</strong>.
                                             </p>
-                                        </div>
-                                        <div className="flex gap-2 flex-wrap">
-                                            {cfdis.length === 0 && (
-                                                <button onClick={() => {
-                                                    const demoData = [
-                                                        { uuid: '04E7659C', fecha: '2026-05-02', rfcEmisor: activeCompany.rfc, nombreEmisor: activeCompany.razonSocial, rfcReceptor: 'RCU150707', nombreReceptor: 'CLIENTE SA', total: 16851.74, subtotal: 14527.36, iva: 2324.38, tipo: 'Emitido', concepto: 'Servicios de Arrendamiento', status: 'Vigente' },
-                                                        { uuid: '0038C0FC', fecha: '2026-05-05', rfcEmisor: 'NWM9709244W4', nombreEmisor: 'NUEVA WAL MART', rfcReceptor: activeCompany.rfc, nombreReceptor: activeCompany.razonSocial, total: 332.48, subtotal: 286.62, iva: 45.86, tipo: 'Recibido', concepto: 'Papelería y Oficina', status: 'Vigente' },
-                                                        { uuid: 'FE096CD4', fecha: '2026-05-10', rfcEmisor: 'AWS000101XYZ', nombreEmisor: 'AMAZON WEB SERVICES', rfcReceptor: activeCompany.rfc, nombreReceptor: activeCompany.razonSocial, total: 1753.92, subtotal: 1512.00, iva: 241.92, tipo: 'Recibido', concepto: 'Licenciamiento Software Cloud', status: 'Vigente' }
-                                                    ];
-                                                    setCfdis(demoData);
-                                                    setBankMovements([
-                                                        { id: 1, fecha: '2026-05-05', referencia: 'COMPRA WALMART', descripcion: 'TC CORPORATIVA', cargo: 332.48, abono: 0, tipo: 'Egreso' },
-                                                        { id: 2, fecha: '2026-05-02', referencia: 'SPEI RECIBIDO', descripcion: 'PAGO CLIENTE SA', cargo: 0, abono: 16851.74, tipo: 'Ingreso' },
-                                                        { id: 3, fecha: '2026-05-10', referencia: 'PAYPAL *AWS', descripcion: 'SERVICIOS NUBE', cargo: 1753.92, abono: 0, tipo: 'Egreso' }
-                                                    ]);
-                                                    triggerToast('Datos demo cargados. Navega a Control de Gastos para probar la IA.');
-                                                }} className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs transition-all shadow-lg flex items-center gap-2">
-                                                    <i data-lucide="play" className="w-4 h-4"></i> Cargar Archivos Demo
-                                                </button>
-                                            )}
                                         </div>
                                     </div>
 
@@ -802,11 +917,11 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                             {dashboardInsight ? (
                                                 <p className="text-sm text-indigo-50 leading-relaxed mt-2 whitespace-pre-wrap font-sans bg-indigo-950/30 p-3 rounded-lg border border-indigo-700/50">{dashboardInsight}</p>
                                             ) : (
-                                                <p className="text-xs text-indigo-300 mt-1 font-sans">Analiza tus ingresos contra egresos facturados para detectar posibles riesgos tributarios.</p>
+                                                <p className="text-xs text-indigo-300 mt-1 font-sans">Analiza tus ingresos contra egresos facturados del periodo activo para detectar riesgos tributarios.</p>
                                             )}
                                         </div>
                                         <div className="shrink-0">
-                                            <button onClick={generateDashboardInsight} disabled={loadingInsight || (cfdis.length === 0 && bankMovements.length === 0)} 
+                                            <button onClick={generateDashboardInsight} disabled={loadingInsight || (activeCfdis.length === 0 && activeBankMovements.length === 0)} 
                                                 className="bg-white text-indigo-900 px-5 py-2.5 rounded-lg font-bold text-xs hover:bg-indigo-50 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                                                 {loadingInsight ? <span className="animate-pulse">Analizando...</span> : <><i data-lucide="sparkles" className="w-4 h-4"></i> Generar Radar IA</>}
                                             </button>
@@ -816,28 +931,28 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                     {/* KPIs */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 font-sans">
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
-                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Tasa de Conciliación</div>
+                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Tasa de Conciliación Periodo</div>
                                             <div className="text-3xl font-mono font-bold mt-2 text-slate-800">{dashboardStats.conciliationRate}%</div>
                                             <div className="w-full bg-slate-100 rounded-full h-1.5 mt-3"><div className="bg-emerald-500 h-1.5 rounded-full transition-all" style={{ width: `${dashboardStats.conciliationRate}%` }}></div></div>
                                         </div>
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
-                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Facturado (Ingresos)</div>
+                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Facturado (Ingresos) Periodo</div>
                                             <div className="text-2xl font-mono font-bold mt-2 text-emerald-600">${dashboardStats.totalCfdisEmitidos.toLocaleString('es-MX', {maximumFractionDigits: 0})}</div>
                                             <div className="text-[10px] text-slate-400 mt-1">CFDIs Emitidos</div>
                                         </div>
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
-                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Facturado (Gastos)</div>
+                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Facturado (Gastos) Periodo</div>
                                             <div className="text-2xl font-mono font-bold mt-2 text-amber-600">${dashboardStats.totalCfdisRecibidos.toLocaleString('es-MX', {maximumFractionDigits: 0})}</div>
                                             <div className="text-[10px] text-slate-400 mt-1">CFDIs Recibidos</div>
                                         </div>
                                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-center">
-                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Egresos Bancarios</div>
+                                            <div className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Egresos Bancarios Periodo</div>
                                             <div className="text-2xl font-mono font-bold mt-2 text-indigo-600">${dashboardStats.totalBancosEgreso.toLocaleString('es-MX', {maximumFractionDigits: 0})}</div>
-                                            <div className="text-[10px] text-slate-400 mt-1">Sálida en banco</div>
+                                            <div className="text-[10px] text-slate-400 mt-1">Salida en banco</div>
                                         </div>
                                     </div>
 
-                                    {/* APARTADO ¿CÓMO AUTOMATIZAR TU CONCILIACIÓN? (RESTAURADO Y MEJORADO) */}
+                                    {/* APARTADO ¿CÓMO AUTOMATIZAR TU CONCILIACIÓN? */}
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
                                         <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                                             <div className="bg-emerald-100 text-emerald-800 p-1.5 rounded-lg"><i data-lucide="help-circle" className="w-5 h-5"></i></div>
@@ -854,17 +969,17 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paso 1</span>
                                                         <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i>
                                                     </div>
-                                                    <h4 className="font-bold text-xs text-slate-800">Empresa Activa</h4>
-                                                    <p className="text-[10px] text-slate-500 leading-normal">Tienes seleccionada la empresa <span className="font-bold">{activeCompany.rfc}</span> en la nube.</p>
+                                                    <h4 className="font-bold text-xs text-slate-800">Cargar Catálogo</h4>
+                                                    <p className="text-[10px] text-slate-500 leading-normal">El sistema comienza en blanco. Importa tu Excel/CSV de cuentas.</p>
                                                 </div>
-                                                <button onClick={() => setActiveTab('configuracion')} className="text-[11px] font-bold text-indigo-600 text-left">Cambiar →</button>
+                                                <button onClick={() => setActiveTab('catalogo')} className="text-[11px] font-bold text-indigo-600 text-left">Catálogo →</button>
                                             </div>
 
                                             <div className="p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col justify-between space-y-3">
                                                 <div className="space-y-1.5">
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paso 2</span>
-                                                        {cfdis.length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
+                                                        {activeCfdis.length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
                                                     </div>
                                                     <h4 className="font-bold text-xs text-slate-800">Cargar XMLs</h4>
                                                     <p className="text-[10px] text-slate-500 leading-normal">Importa tus carpetas ZIP desde el SAT en milisegundos de forma local.</p>
@@ -876,7 +991,7 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                 <div className="space-y-1.5">
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paso 3</span>
-                                                        {bankMovements.length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
+                                                        {activeBankMovements.length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-500"></i> : <span className="w-2 h-2 rounded-full bg-slate-300"></span>}
                                                     </div>
                                                     <h4 className="font-bold text-xs text-slate-800">Bancos CSV</h4>
                                                     <p className="text-[10px] text-slate-500 leading-normal">Sube el extracto bancario para aparearlo contra tus facturas.</p>
@@ -891,7 +1006,7 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                         {Object.keys(gastosMeta).length > 0 ? <i data-lucide="check-circle-2" className="w-4 h-4 text-amber-500"></i> : <i data-lucide="sparkles" className="w-4 h-4 text-amber-400"></i>}
                                                     </div>
                                                     <h4 className="font-bold text-xs text-amber-900">Clasificar Gastos</h4>
-                                                    <p className="text-[10px] text-amber-700/80 leading-normal">Utiliza nuestro motor de IA para asignar Cuentas Contables y Etiquetas a Egresos.</p>
+                                                    <p className="text-[10px] text-amber-700/80 leading-normal">Utiliza nuestro motor de IA para asignar Cuentas Contables automáticamente.</p>
                                                 </div>
                                                 <button onClick={() => setActiveTab('gastos')} className="text-[11px] font-bold text-amber-600 text-left flex items-center gap-1">Ir a Gastos <i data-lucide="arrow-right" className="w-3 h-3"></i></button>
                                             </div>
@@ -903,14 +1018,14 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                         <span className="w-2 h-2 rounded-full bg-slate-300"></span>
                                                     </div>
                                                     <h4 className="font-bold text-xs text-slate-800">Exportar Pólizas</h4>
-                                                    <p className="text-[10px] text-slate-500 leading-normal">Descarga tu TXT para CONTPAQi o Alegra ya conciliado.</p>
+                                                    <p className="text-[10px] text-slate-500 leading-normal">Haz la conciliación y descarga tu TXT para CONTPAQi.</p>
                                                 </div>
                                                 <button onClick={() => setActiveTab('polizas')} className="text-[11px] font-bold text-emerald-600 text-left">Pólizas →</button>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* PANEL DE ESTADO DE DATOS DE SESIÓN (RESTAURADO) */}
+                                    {/* PANEL DE ESTADO DE DATOS DE SESIÓN */}
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 font-sans">
                                         <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
                                             <div className="bg-indigo-100 text-indigo-800 p-1.5 rounded-lg"><i data-lucide="database" className="w-5 h-5"></i></div>
@@ -922,28 +1037,28 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
 
                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-xs text-slate-700">
                                             <div className="space-y-1 border-r border-slate-100 pr-4">
-                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold">Empresa</div>
+                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold">Contexto Activo</div>
                                                 <div className="font-bold text-slate-800 truncate">{activeCompany.razonSocial}</div>
-                                                <div className="font-mono text-emerald-600 font-bold">{activeCompany.rfc}</div>
+                                                <div className="font-mono text-emerald-600 font-bold">{globalMonth !== 'Todos' ? `Mes ${globalMonth}` : 'Año Completo'} / {globalYear}</div>
                                             </div>
                                             <div className="space-y-1 border-r border-slate-100 px-4 font-mono">
-                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Comprobantes ({cfdis.length})</div>
+                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">CFDIs Periodo ({activeCfdis.length})</div>
                                                 <div className="grid grid-cols-2 gap-x-2">
-                                                    <div>Ingresos: {cfdis.filter(c => c.tipo === 'Emitido').length}</div>
-                                                    <div className="text-amber-600">Gastos: {cfdis.filter(c => c.tipo === 'Recibido').length}</div>
+                                                    <div>Ingresos: {activeCfdis.filter(c => c.tipo === 'Emitido').length}</div>
+                                                    <div className="text-amber-600">Gastos: {activeCfdis.filter(c => c.tipo === 'Recibido').length}</div>
                                                 </div>
                                             </div>
                                             <div className="space-y-1 border-r border-slate-100 px-4 font-mono">
-                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Flujo de Banco</div>
-                                                <div>Movimientos: <span className="font-bold text-indigo-600">{bankMovements.length}</span></div>
-                                                <div>Gastos Meta: <span className="font-bold text-amber-600">{Object.keys(gastosMeta).length} guardados</span></div>
+                                                <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Banco Periodo</div>
+                                                <div>Movimientos: <span className="font-bold text-indigo-600">{activeBankMovements.length}</span></div>
+                                                <div>Polizas Diario: <span className="font-bold text-amber-600">{activeManualPolicies.length}</span></div>
                                             </div>
                                             <div className="space-y-1 pl-4 flex flex-col justify-between">
                                                 <div>
-                                                    <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Acción de Limpieza</div>
-                                                    <div>RAM Temporal</div>
+                                                    <div className="text-slate-400 uppercase tracking-wider text-[10px] font-bold font-sans">Limpieza Memoria</div>
+                                                    <div>RAM Local Total</div>
                                                 </div>
-                                                <button onClick={() => { setCfdis([]); setBankMovements([]); setMatches([]); setDashboardInsight(null); triggerToast('🧹 Datos de sesión temporal eliminados.'); }} className="text-rose-600 hover:text-rose-700 font-bold text-[11px] underline text-left mt-2">Vaciar Memoria</button>
+                                                <button onClick={() => { setCfdis([]); setBankMovements([]); setMatches([]); setManualPolicies([]); setAccounts([]); setDashboardInsight(null); triggerToast('🧹 RAM Vaciada completamente.'); }} className="text-rose-600 hover:text-rose-700 font-bold text-[11px] underline text-left mt-2">Borrar Archivos Local</button>
                                             </div>
                                         </div>
                                     </div>
@@ -951,22 +1066,22 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                             )}
 
                             {/* ======================================= */}
-                            {/* TAB: CONTROL DE GASTOS (BULK AI ADDED)  */}
+                            {/* TAB: CONTROL DE GASTOS                  */}
                             {/* ======================================= */}
                             {activeTab === 'gastos' && (
                                 <div className="space-y-4 animate-fade-in">
                                     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-4 border-l-amber-500">
                                         <div>
                                             <h3 className="font-bold text-lg text-amber-700 flex items-center gap-2"><i data-lucide="clipboard-list" className="w-5 h-5"></i> Control de Gastos & Clasificación IA</h3>
-                                            <p className="text-xs text-slate-500 mt-1">Administra la meta-información de tus Egresos. La AI puede mapear tus compras al catálogo contable instantáneamente.</p>
+                                            <p className="text-xs text-slate-500 mt-1">Administra la meta-información de tus Egresos del periodo <strong className="text-slate-700">{globalMonth}/{globalYear}</strong>.</p>
                                         </div>
                                         <div className="flex gap-2 w-full md:w-auto">
-                                            <button onClick={handleBulkAiCategorization} disabled={bulkAiLoading || cfdis.filter(c => c.tipo === 'Recibido').length === 0}
+                                            <button onClick={handleBulkAiCategorization} disabled={bulkAiLoading || activeCfdis.filter(c => c.tipo === 'Recibido').length === 0}
                                                 className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors flex-1 md:flex-none disabled:opacity-50">
                                                 {bulkAiLoading ? <span className="animate-pulse">Pensando...</span> : <><i data-lucide="sparkles" className="w-4 h-4"></i> Auto-Clasificar Masivo (IA)</>}
                                             </button>
                                             <button onClick={exportToExcelGastos} className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors">
-                                                <i data-lucide="download" className="w-4 h-4"></i> Exportar
+                                                <i data-lucide="download" className="w-4 h-4"></i> Exportar Periodo
                                             </button>
                                         </div>
                                     </div>
@@ -989,16 +1104,16 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                     </tr>
                                                 </thead>
                                                 <tbody className="font-mono">
-                                                    {cfdis.filter(c => c.tipo === 'Recibido').map(c => {
+                                                    {activeCfdis.filter(c => c.tipo === 'Recibido').map(c => {
                                                         const meta = gastosMeta[c.uuid] || {};
                                                         const matchId = Object.keys(matches).find(k => matches[k] === c.uuid);
                                                         const bankMov = matchId ? bankMovements.find(m => m.id == matchId) : null;
                                                         return <GastoRow key={c.uuid} cfdi={c} meta={meta} onUpdate={updateGastoMeta} bankMovement={bankMov} />;
                                                     })}
-                                                    {cfdis.filter(c => c.tipo === 'Recibido').length === 0 && (
+                                                    {activeCfdis.filter(c => c.tipo === 'Recibido').length === 0 && (
                                                         <tr><td colSpan="10" className="p-10 text-center text-slate-400 font-sans italic bg-slate-50/50">
                                                             <i data-lucide="inbox" className="w-10 h-10 mx-auto mb-2 text-slate-300"></i>
-                                                            No hay facturas de Gastos (Recibidos) importadas en esta sesión.
+                                                            No hay facturas de Egresos en {globalMonth}/{globalYear}. Verifica el selector de fecha superior o importa XMLs.
                                                         </td></tr>
                                                     )}
                                                 </tbody>
@@ -1012,16 +1127,16 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                             {/* TAB: IMPORTAR XML                       */}
                             {/* ======================================= */}
                             {activeTab === 'sat' && (
-                                <div className="space-y-6">
+                                <div className="space-y-6 animate-fade-in">
                                     <div className="flex border-b border-slate-200 overflow-x-auto font-sans">
-                                        <button onClick={() => setXmlSubTab('carga')} className={`py-2 px-4 font-bold text-xs flex gap-2 border-b-2 whitespace-nowrap ${xmlSubTab === 'carga' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>Cargar XML/ZIP</button>
-                                        <button onClick={() => setXmlSubTab('listado')} className={`py-2 px-4 font-bold text-xs flex gap-2 border-b-2 whitespace-nowrap ${xmlSubTab === 'listado' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>Listado ({cfdis.length})</button>
+                                        <button onClick={() => setXmlSubTab('carga')} className={`py-2 px-4 font-bold text-xs flex gap-2 border-b-2 whitespace-nowrap ${xmlSubTab === 'carga' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>Cargar Archivos</button>
+                                        <button onClick={() => setXmlSubTab('listado')} className={`py-2 px-4 font-bold text-xs flex gap-2 border-b-2 whitespace-nowrap ${xmlSubTab === 'listado' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>Consulta de Periodo ({filteredCfdis.length})</button>
                                     </div>
 
                                     {xmlSubTab === 'carga' && (
                                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
                                             <h3 className="text-lg font-bold mb-2">Importación XML Local</h3>
-                                            <p className="text-xs text-slate-500 mb-6">Arrastra archivos XML o ZIP. Todo se procesa rápido y privado en tu PC.</p>
+                                            <p className="text-xs text-slate-500 mb-6">Arrastra archivos XML o carpetas ZIP. Todo se procesa de forma segura en tu PC.</p>
                                             <div className="border-2 border-dashed border-emerald-300 rounded-xl p-10 bg-emerald-50 hover:bg-emerald-100 transition-colors relative cursor-pointer max-w-lg mx-auto">
                                                 <input type="file" accept=".xml,.zip" multiple onChange={handleLocalXmlUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                                 <i data-lucide="files" className="w-12 h-12 text-emerald-500 mx-auto mb-3"></i>
@@ -1032,11 +1147,20 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
 
                                     {xmlSubTab === 'listado' && (
                                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                            <div className="flex justify-between mb-4">
-                                                <h3 className="font-bold text-sm">Comprobantes Importados</h3>
-                                                <select value={cfdiTypeFilter} onChange={e => setCfdiTypeFilter(e.target.value)} className="border rounded px-2 text-xs py-1">
-                                                    {['Todos', 'Emitido', 'Recibido', 'Nómina', 'Pago'].map(o => <option key={o} value={o}>{o}</option>)}
-                                                </select>
+                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                                                <h3 className="font-bold text-sm shrink-0">Comprobantes de {globalMonth}/{globalYear}</h3>
+                                                <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                                                    <div className="relative flex-1 md:flex-none">
+                                                        <i data-lucide="search" className="absolute left-2.5 top-2 w-4 h-4 text-slate-400"></i>
+                                                        <input type="text" placeholder="Buscar Emisor, UUID..." value={xmlSearchTerm} onChange={e => setXmlSearchTerm(e.target.value)} className="w-full md:w-48 pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-emerald-500 transition-all shadow-sm" />
+                                                    </div>
+                                                    <select value={cfdiTypeFilter} onChange={e => setCfdiTypeFilter(e.target.value)} className="border border-slate-200 rounded-lg px-2 text-xs py-1.5 outline-none focus:border-emerald-500 shadow-sm bg-slate-50 font-bold">
+                                                        <option value="Todos">Todas las Pólizas</option>
+                                                        <option value="Ingreso">Ingresos (Emitidos)</option>
+                                                        <option value="Egreso">Egresos (Recibidos)</option>
+                                                        <option value="Diario">Diario (Pago/Nómina)</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                             <div className="overflow-x-auto">
                                                 <table className="w-full text-left text-xs font-mono whitespace-nowrap">
@@ -1044,16 +1168,21 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                         <tr><th className="py-2">Fecha</th><th>Tipo</th><th>RFC Emisor</th><th>Emisor</th><th className="text-right">Total</th><th>UUID</th></tr>
                                                     </thead>
                                                     <tbody>
-                                                        {cfdis.filter(c => cfdiTypeFilter === 'Todos' || c.tipo === cfdiTypeFilter).map(c => (
+                                                        {filteredCfdis.map(c => (
                                                             <tr key={c.uuid} className="border-b border-slate-50 hover:bg-slate-50">
                                                                 <td className="py-2 text-slate-500">{c.fecha}</td>
                                                                 <td><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${c.tipo === 'Recibido'?'bg-amber-100 text-amber-800':'bg-emerald-100 text-emerald-800'}`}>{c.tipo}</span></td>
                                                                 <td>{c.rfcEmisor}</td>
-                                                                <td className="truncate max-w-[150px] font-sans font-bold">{c.nombreEmisor}</td>
-                                                                <td className="text-right font-bold text-slate-800">${c.total.toFixed(2)}</td>
+                                                                <td className="truncate max-w-[200px] font-sans font-bold">{c.nombreEmisor}</td>
+                                                                <td className="text-right font-bold text-slate-800">${c.total.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
                                                                 <td className="text-slate-400">{c.uuid.substring(0,8)}</td>
                                                             </tr>
                                                         ))}
+                                                        {filteredCfdis.length === 0 && (
+                                                            <tr><td colSpan="6" className="py-10 text-center text-slate-400 font-sans italic bg-slate-50/50">
+                                                                <i data-lucide="search-x" className="w-8 h-8 mx-auto mb-2 text-slate-300"></i> No se encontraron comprobantes para los filtros y el periodo actual.
+                                                            </td></tr>
+                                                        )}
                                                     </tbody>
                                                 </table>
                                             </div>
@@ -1066,37 +1195,40 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                             {/* TAB: BANCOS                             */}
                             {/* ======================================= */}
                             {activeTab === 'bancos' && (
-                                <div className="space-y-6">
+                                <div className="space-y-6 animate-fade-in">
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
-                                        <h3 className="text-lg font-bold mb-2">Cargar Estado de Cuenta Bancario</h3>
+                                        <h3 className="text-lg font-bold mb-2">Cargar Extracto Bancario Multiformato</h3>
+                                        <p className="text-xs text-slate-500 mb-6">Sube los movimientos del banco para el cruce. Soporta .csv, .xls, .xlsx, .txt</p>
                                         <div className="border-2 border-dashed border-indigo-300 rounded-xl p-8 bg-indigo-50 hover:bg-indigo-100 transition-colors relative cursor-pointer max-w-lg mx-auto">
-                                            <input type="file" accept=".csv,.xls,.xlsx" onChange={handleBankUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                            <input type="file" accept=".csv,.xls,.xlsx,.txt" onChange={handleBankUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                             <i data-lucide="landmark" className="w-10 h-10 text-indigo-500 mx-auto mb-2"></i>
-                                            <span className="font-bold text-slate-700 block text-sm">Arrastra tu CSV/Excel bancario</span>
+                                            <span className="font-bold text-slate-700 block text-sm">Arrastra archivo bancario aquí</span>
                                         </div>
                                     </div>
-                                    {bankMovements.length > 0 && (
+                                    {activeBankMovements.length > 0 ? (
                                         <div className="bg-white p-6 rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                                            <h3 className="font-bold text-sm mb-4">Transacciones Bancarias</h3>
+                                            <h3 className="font-bold text-sm mb-4">Transacciones Bancarias ({globalMonth}/{globalYear})</h3>
                                             <div className="overflow-x-auto text-xs font-mono">
                                                 <table className="w-full text-left">
                                                     <thead className="border-b font-sans text-slate-400">
                                                         <tr><th className="py-2">Fecha</th><th>Referencia</th><th>Descripción</th><th className="text-right">Cargo</th><th className="text-right">Abono</th></tr>
                                                     </thead>
                                                     <tbody>
-                                                        {bankMovements.map(m => (
+                                                        {activeBankMovements.map(m => (
                                                             <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50">
                                                                 <td className="py-2">{m.fecha}</td>
-                                                                <td className="font-bold">{m.referencia}</td>
-                                                                <td className="truncate max-w-[200px]">{m.descripcion}</td>
-                                                                <td className="text-right text-rose-600 font-bold">{m.cargo > 0 ? `-$${m.cargo.toFixed(2)}` : ''}</td>
-                                                                <td className="text-right text-emerald-600 font-bold">{m.abono > 0 ? `+$${m.abono.toFixed(2)}` : ''}</td>
+                                                                <td className="font-bold text-slate-800">{m.referencia}</td>
+                                                                <td className="truncate max-w-[200px] text-slate-600">{m.descripcion}</td>
+                                                                <td className="text-right text-rose-600 font-bold">{m.cargo > 0 ? `-$${m.cargo.toLocaleString('es-MX', {minimumFractionDigits:2})}` : ''}</td>
+                                                                <td className="text-right text-emerald-600 font-bold">{m.abono > 0 ? `+$${m.abono.toLocaleString('es-MX', {minimumFractionDigits:2})}` : ''}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
                                                 </table>
                                             </div>
                                         </div>
+                                    ) : (
+                                        <div className="text-center p-8 bg-white rounded-xl border border-slate-200 text-slate-400 font-sans italic">No hay movimientos bancarios registrados para {globalMonth}/{globalYear}.</div>
                                     )}
                                 </div>
                             )}
@@ -1105,13 +1237,13 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                             {/* TAB: CONCILIACIÓN                       */}
                             {/* ======================================= */}
                             {activeTab === 'conciliacion' && (
-                                <div className="space-y-6">
+                                <div className="space-y-6 animate-fade-in">
                                     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
                                         <div>
                                             <h3 className="font-bold text-sm">Asistente de Conciliación Local</h3>
-                                            <p className="text-xs text-slate-500 font-sans">Apareamiento Banco vs CFDI de <span className="font-bold text-slate-800">{activeCompany.razonSocial}</span>.</p>
+                                            <p className="text-xs text-slate-500 font-sans">Cruce del banco vs facturas en <strong className="text-slate-800">{globalMonth}/{globalYear}</strong>.</p>
                                         </div>
-                                        <button onClick={triggerSmartMatch} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs flex gap-1.5 items-center">
+                                        <button onClick={triggerSmartMatch} disabled={activeBankMovements.length===0} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs flex gap-1.5 items-center disabled:opacity-50">
                                             <i data-lucide="sparkles" className="w-4 h-4"></i> Automatch Inteligente
                                         </button>
                                     </div>
@@ -1121,9 +1253,9 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                 <tr><th className="p-3">Banco</th><th className="p-3 text-right">Importe</th><th className="p-3 text-center">Match</th><th className="p-3">CFDI SAT</th><th className="p-3 text-center">Eliminar</th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {bankMovements.map(mov => {
+                                                {activeBankMovements.map(mov => {
                                                     const matchedUuid = matches[mov.id];
-                                                    const cfdi = matchedUuid ? cfdis.find(c => c.uuid === matchedUuid) : null;
+                                                    const cfdi = matchedUuid ? activeCfdis.find(c => c.uuid === matchedUuid) : null;
                                                     const amount = mov.cargo > 0 ? mov.cargo : mov.abono;
 
                                                     return (
@@ -1135,14 +1267,14 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                             <td className="p-3 text-center"><i data-lucide={matchedUuid ? "link" : "link-2"} className={`w-4 h-4 inline ${matchedUuid ? 'text-emerald-500' : 'text-slate-300'}`}></i></td>
                                                             <td className="p-3">
                                                                 {cfdi ? (
-                                                                    <div className="bg-emerald-50 border border-emerald-100 px-2 py-1 rounded inline-block">
-                                                                        <div className="font-bold text-emerald-800 text-[11px] truncate max-w-[150px]">{cfdi.nombreEmisor}</div>
+                                                                    <div className="bg-emerald-50 border border-emerald-100 px-2 py-1 rounded inline-block shadow-sm">
+                                                                        <div className="font-bold text-emerald-800 text-[11px] truncate max-w-[200px]">{cfdi.nombreEmisor}</div>
                                                                         <div className="text-[9px] text-slate-500 font-mono uppercase">{cfdi.uuid.substring(0,8)}</div>
                                                                     </div>
                                                                 ) : (
-                                                                    <select onChange={(e) => { if(e.target.value){setMatches({...matches, [mov.id]: e.target.value}); triggerToast('Vinculado Exitosamente.');} }} className="text-[10px] border border-slate-200 bg-slate-50 rounded p-1.5 w-full max-w-[200px] outline-none font-bold text-slate-600 focus:border-indigo-400">
+                                                                    <select onChange={(e) => { if(e.target.value){setMatches({...matches, [mov.id]: e.target.value}); triggerToast('Vinculado Exitosamente.');} }} className="text-[10px] border border-slate-200 bg-slate-50 rounded p-1.5 w-full max-w-[250px] outline-none font-bold text-slate-600 focus:border-indigo-400">
                                                                         <option value="">Buscar CFDI coincidente...</option>
-                                                                        {cfdis.filter(c => !Object.values(matches).includes(c.uuid) && Math.abs(c.total - amount) < 1).map(c => <option key={c.uuid} value={c.uuid}>${c.total.toFixed(2)} - {c.nombreEmisor}</option>)}
+                                                                        {activeCfdis.filter(c => !Object.values(matches).includes(c.uuid) && Math.abs(c.total - amount) < 1).map(c => <option key={c.uuid} value={c.uuid}>${c.total.toLocaleString()} - {c.nombreEmisor}</option>)}
                                                                     </select>
                                                                 )}
                                                             </td>
@@ -1152,7 +1284,7 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                         </tr>
                                                     );
                                                 })}
-                                                {bankMovements.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-slate-400 italic">Importa tu estado de cuenta en la pestaña "Bancos" para iniciar.</td></tr>}
+                                                {activeBankMovements.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-slate-400 italic bg-slate-50/50">Importa estado de cuenta para este periodo en la pestaña "Bancos".</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
@@ -1160,36 +1292,104 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                             )}
 
                             {/* ======================================= */}
-                            {/* TAB: PÓLIZAS CONTPAQI / ALEGRA          */}
+                            {/* TAB: PÓLIZAS CONTPAQI                   */}
                             {/* ======================================= */}
                             {activeTab === 'polizas' && (
-                                <div className="space-y-6">
-                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 border-l-4 border-l-indigo-500">
                                         <div>
-                                            <h3 className="font-bold text-lg">Exportador de Pólizas ERP</h3>
-                                            <p className="text-xs text-slate-500">Asientos generados dinámicamente con las cuentas definidas en <strong>Control de Gastos</strong>.</p>
+                                            <h3 className="font-bold text-lg">Pólizas ERP del Periodo</h3>
+                                            <p className="text-xs text-slate-500">Módulo Integral: Automatizadas por XML y <strong className="text-indigo-600">Manuales (Diario)</strong>.</p>
                                         </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={downloadContpaqiPolizas} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-xs shadow-md transition-colors flex items-center gap-2"><i data-lucide="download" className="w-4 h-4"></i> Descargar TXT CONTPAQi</button>
+                                        <div className="flex gap-2 flex-wrap md:flex-nowrap">
+                                            <select value={policyListFilter} onChange={e => setPolicyListFilter(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg text-xs outline-none focus:border-indigo-500">
+                                                <option value="Todos">Todas las Pólizas</option>
+                                                <option value="Ingreso">Solo Ingresos</option>
+                                                <option value="Egreso">Solo Egresos</option>
+                                                <option value="Diario">Solo Diario (Provisiones)</option>
+                                            </select>
+                                            <button onClick={() => setShowManualPolicyForm(!showManualPolicyForm)} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-2 px-4 rounded-lg text-xs shadow-sm transition-colors flex items-center gap-2 border border-indigo-200">
+                                                <i data-lucide={showManualPolicyForm ? "minus-circle" : "plus-circle"} className="w-4 h-4"></i> Asiento Diario
+                                            </button>
+                                            <button onClick={downloadContpaqiPolizas} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-xs shadow-md transition-colors flex items-center gap-2">
+                                                <i data-lucide="download" className="w-4 h-4"></i> Exportar TXT
+                                            </button>
                                         </div>
                                     </div>
+
+                                    {/* FORMULARIO POLIZAS MANUALES (DIARIO) */}
+                                    {showManualPolicyForm && (
+                                        <form onSubmit={handleAddManualPolicy} className="bg-white p-6 rounded-xl border border-indigo-200 shadow-md space-y-4 animate-fade-in relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full -z-10"></div>
+                                            <h4 className="font-bold text-indigo-900 text-base flex items-center gap-2 mb-2"><i data-lucide="file-edit" className="w-5 h-5"></i> Carga: Póliza de Diario Manual</h4>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-xs font-sans">
+                                                <div>
+                                                    <label className="block text-slate-600 font-bold mb-1">Fecha Contable</label>
+                                                    <input type="date" value={newManualPolicy.fecha} onChange={e => setNewManualPolicy({...newManualPolicy, fecha: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" required />
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-slate-600 font-bold mb-1">Concepto Operativo</label>
+                                                    <select value={newManualPolicy.concepto} onChange={e => setNewManualPolicy({...newManualPolicy, concepto: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-bold text-slate-700">
+                                                        <option value="Provisión de Gastos">Provisión de Gastos</option>
+                                                        <option value="Gastos No Facturados">Gastos No Facturados</option>
+                                                        <option value="Ingresos Diversos">Ingresos Diversos</option>
+                                                        <option value="Depreciaciones Mensuales">Depreciaciones Mensuales</option>
+                                                        <option value="Amortización de Intangibles">Amortización de Intangibles</option>
+                                                        <option value="Ajuste Contable (Reclasificación)">Ajuste Contable (Reclasificación)</option>
+                                                        <option value="Traspaso entre Cuentas">Traspaso entre Cuentas</option>
+                                                    </select>
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-slate-600 font-bold mb-1">Importe Total</label>
+                                                    <input type="number" step="0.01" min="0.01" placeholder="Ej: 5000.00" value={newManualPolicy.importe} onChange={e => setNewManualPolicy({...newManualPolicy, importe: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono transition-all font-bold text-indigo-700" required />
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs mt-2 border-t border-slate-100 pt-4">
+                                                <div>
+                                                    <label className="block text-emerald-700 font-bold mb-1"><i data-lucide="arrow-up-right" className="w-3 h-3 inline"></i> Cuenta de Cargo (Debe)</label>
+                                                    <select value={newManualPolicy.cuentaCargo} onChange={e => setNewManualPolicy({...newManualPolicy, cuentaCargo: e.target.value})} className="w-full bg-emerald-50 border border-emerald-200 rounded-lg p-2 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono transition-all text-emerald-900" required>
+                                                        <option value="">Buscar en catálogo activo...</option>
+                                                        {accounts.map(a => <option key={`cargo-${a.codigo}`} value={a.codigo}>{a.codigo} - {a.nombre.substring(0,40)}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-rose-700 font-bold mb-1"><i data-lucide="arrow-down-right" className="w-3 h-3 inline"></i> Cuenta de Abono (Haber)</label>
+                                                    <select value={newManualPolicy.cuentaAbono} onChange={e => setNewManualPolicy({...newManualPolicy, cuentaAbono: e.target.value})} className="w-full bg-rose-50 border border-rose-200 rounded-lg p-2 outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono transition-all text-rose-900" required>
+                                                        <option value="">Buscar en catálogo activo...</option>
+                                                        {accounts.map(a => <option key={`abono-${a.codigo}`} value={a.codigo}>{a.codigo} - {a.nombre.substring(0,40)}</option>)}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="flex justify-end pt-3">
+                                                <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-md transition-colors text-xs flex items-center gap-2"><i data-lucide="save" className="w-4 h-4"></i> Guardar Póliza</button>
+                                            </div>
+                                        </form>
+                                    )}
+
                                     <div className="space-y-4 font-mono text-xs">
-                                        {generatedPolizas.slice(0, 50).map(p => (
-                                            <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                                                <div className="bg-slate-50 p-4 border-b flex justify-between font-sans items-center">
-                                                    <span className="font-bold text-slate-700 bg-white px-2 py-1 rounded shadow-sm border border-slate-100">Póliza de {p.tipo} #{p.numero} - <span className="text-indigo-600">{p.fecha}</span></span>
-                                                    <span className="text-[10px] text-slate-400 border border-slate-200 px-2 py-0.5 rounded-full">{p.uuidAsociado.substring(0,18)}</span>
+                                        {displayedPolizas.slice(0, 50).map(p => (
+                                            <div key={p.id} className={`bg-white rounded-xl border overflow-hidden shadow-sm transition-all hover:shadow-md ${p.tipo === 'Diario' ? 'border-indigo-200' : 'border-slate-200'}`}>
+                                                <div className={`p-4 border-b flex flex-wrap justify-between font-sans items-center gap-2 ${p.tipo === 'Diario' ? 'bg-indigo-50/50' : 'bg-slate-50'}`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider text-white ${p.tipo === 'Ingreso' ? 'bg-emerald-500' : p.tipo === 'Egreso' ? 'bg-rose-500' : 'bg-indigo-500'}`}>{p.tipo}</span>
+                                                        <span className="font-bold text-slate-800">#{p.numero} - <span className="text-slate-500">{p.fecha}</span></span>
+                                                        <span className="text-slate-600 text-[11px] bg-white border px-2 py-0.5 rounded truncate max-w-[200px]" title={p.concepto}>{p.concepto}</span>
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold border px-2 py-1 rounded-full bg-white shadow-sm ${p.tipo === 'Diario' ? 'border-indigo-200 text-indigo-700' : 'border-slate-200 text-slate-400'}`}><i data-lucide="link" className="w-3 h-3 inline mr-1"></i>{p.uuidAsociado.substring(0,18)}</span>
                                                 </div>
                                                 <div className="p-4 overflow-x-auto">
                                                     <table className="w-full text-left">
-                                                        <thead className="border-b text-slate-400 text-[10px] font-sans uppercase tracking-wider"><tr><th className="py-1">Cta. Contable</th><th>Nombre Cuenta</th><th className="text-right">Debe (Cargo)</th><th className="text-right">Haber (Abono)</th></tr></thead>
+                                                        <thead className="border-b text-slate-400 text-[10px] font-sans uppercase tracking-wider"><tr><th className="py-1.5">Cta. Contable</th><th>Nombre Cuenta</th><th className="text-right">Debe (Cargo)</th><th className="text-right">Haber (Abono)</th></tr></thead>
                                                         <tbody>
                                                             {p.movimientos.map((m, idx) => (
-                                                                <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50">
-                                                                    <td className="py-2.5 font-bold text-slate-800">{m.cuenta}</td>
+                                                                <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                                                    <td className="py-3 font-bold text-slate-800">{m.cuenta || <span className="text-rose-500 italic">Sin Asignar</span>}</td>
                                                                     <td className="font-sans text-slate-600 font-medium">{m.nombre}</td>
-                                                                    <td className="text-right font-bold text-emerald-700">${m.cargo.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
-                                                                    <td className="text-right font-bold text-rose-700">${m.abono.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+                                                                    <td className="text-right font-bold text-emerald-700">{m.cargo > 0 ? `$${m.cargo.toLocaleString('es-MX', {minimumFractionDigits:2})}` : ''}</td>
+                                                                    <td className="text-right font-bold text-rose-700">{m.abono > 0 ? `$${m.abono.toLocaleString('es-MX', {minimumFractionDigits:2})}` : ''}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
@@ -1197,7 +1397,7 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                                 </div>
                                             </div>
                                         ))}
-                                        {generatedPolizas.length === 0 && <div className="text-center p-8 bg-white rounded-xl border border-slate-200 text-slate-400 font-sans italic">Genera matches en Conciliación para previsualizar las pólizas.</div>}
+                                        {displayedPolizas.length === 0 && <div className="text-center p-10 bg-white rounded-xl border border-slate-200 text-slate-400 font-sans italic bg-slate-50/50">Genera matches o registra asientos de diario para ver pólizas aquí.</div>}
                                     </div>
                                 </div>
                             )}
@@ -1206,41 +1406,59 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                             {/* TAB: CATÁLOGO                           */}
                             {/* ======================================= */}
                             {activeTab === 'catalogo' && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-fit md:col-span-1">
-                                        <h3 className="font-bold mb-4 text-base">Cuentas Contables</h3>
-                                        <form onSubmit={(e) => { e.preventDefault(); setAccounts([...accounts, {codigo: e.target.codigo.value, nombre: e.target.nombre.value, tipo: 'Egreso'}]); triggerToast('Cuenta Agregada'); e.target.reset(); }} className="space-y-4 text-xs mb-6">
+                                        <h3 className="font-bold mb-4 text-base">Creación de Catálogo</h3>
+                                        <form onSubmit={(e) => { e.preventDefault(); setAccounts([...accounts, {codigo: e.target.codigo.value, nombre: e.target.nombre.value, tipo: 'Egreso'}]); triggerToast('Cuenta Agregada Exitosamente'); e.target.reset(); }} className="space-y-4 text-xs mb-6">
                                             <div>
-                                                <label className="font-bold text-slate-500 mb-1 block">Código</label>
-                                                <input name="codigo" placeholder="Ej: 601-01-001" className="w-full bg-slate-50 border border-slate-200 rounded p-2 outline-none focus:border-indigo-400 font-mono" required />
+                                                <label className="font-bold text-slate-500 mb-1 block">Código de Cuenta</label>
+                                                <input name="codigo" placeholder="Ej: 601-01-001" className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-indigo-400 font-mono transition-colors shadow-sm" required />
                                             </div>
                                             <div>
-                                                <label className="font-bold text-slate-500 mb-1 block">Nombre</label>
-                                                <input name="nombre" placeholder="Ej: Gastos IT" className="w-full bg-slate-50 border border-slate-200 rounded p-2 outline-none focus:border-indigo-400" required />
+                                                <label className="font-bold text-slate-500 mb-1 block">Descripción (Nombre)</label>
+                                                <input name="nombre" placeholder="Ej: Gastos TI y Telefonía" className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-indigo-400 transition-colors shadow-sm" required />
                                             </div>
-                                            <button className="bg-slate-900 text-white w-full py-2.5 rounded-lg font-bold hover:bg-slate-800 transition-colors shadow-sm">Guardar Cuenta</button>
+                                            <button className="bg-slate-900 text-white w-full py-2.5 rounded-lg font-bold hover:bg-slate-800 transition-colors shadow-sm flex justify-center items-center gap-2"><i data-lucide="plus" className="w-4 h-4"></i> Guardar Cuenta</button>
                                         </form>
-                                        <div className="border-2 border-dashed border-slate-200 p-6 text-center cursor-pointer hover:bg-slate-50 relative rounded-xl transition-colors">
-                                            <input type="file" onChange={handleCatalogUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                            <i data-lucide="file-spreadsheet" className="w-6 h-6 text-slate-400 mx-auto mb-2"></i>
-                                            <span className="text-xs font-bold text-slate-600">Importar Catálogo CSV</span>
+                                        
+                                        <div className="relative pt-6 border-t border-slate-100">
+                                            <h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-3">Importación Masiva</h4>
+                                            <p className="text-[10px] text-slate-400 mb-4 leading-relaxed">Formatos: .xls, .xlsx, .csv, .txt. Estructura recomendada: Columna "Código" y Columna "Nombre".</p>
+                                            <div className="border-2 border-dashed border-indigo-200 p-6 text-center cursor-pointer hover:bg-indigo-50 relative rounded-xl transition-colors bg-slate-50">
+                                                <input type="file" accept=".csv,.xls,.xlsx,.txt" onChange={handleCatalogUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                <i data-lucide="file-spreadsheet" className="w-8 h-8 text-indigo-400 mx-auto mb-2"></i>
+                                                <span className="text-xs font-bold text-indigo-800">Cargar Archivo Local</span>
+                                            </div>
                                         </div>
                                     </div>
+                                    
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-[600px] overflow-y-auto md:col-span-2">
-                                        <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b border-slate-100">
-                                            <h3 className="font-bold text-base">Mapeo Activo</h3>
-                                            <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md font-bold">{accounts.length} Cuentas</span>
+                                        <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-3 border-b border-slate-100">
+                                            <div>
+                                                <h3 className="font-bold text-base">Catálogo en Memoria</h3>
+                                                <p className="text-[10px] text-slate-500">Estas cuentas se usarán en Pólizas y Clasificación IA.</p>
+                                            </div>
+                                            <span className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold shadow-sm">{accounts.length} Cuentas Registradas</span>
                                         </div>
-                                        <table className="w-full text-xs text-left font-mono">
-                                            <tbody>
-                                                {accounts.map(a => (
-                                                    <tr key={a.codigo} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                                                        <td className="py-3 font-bold text-slate-800 w-32">{a.codigo}</td>
-                                                        <td className="font-sans text-slate-600">{a.nombre}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                        
+                                        {accounts.length > 0 ? (
+                                            <table className="w-full text-xs text-left font-mono mt-2">
+                                                <tbody>
+                                                    {accounts.map(a => (
+                                                        <tr key={a.codigo} className="border-b border-slate-50 hover:bg-slate-50 transition-colors group">
+                                                            <td className="py-3 font-bold text-slate-800 w-32 border-l-2 border-transparent group-hover:border-indigo-400 pl-2">{a.codigo}</td>
+                                                            <td className="font-sans text-slate-600">{a.nombre}</td>
+                                                            <td className="text-right"><button onClick={() => setAccounts(accounts.filter(acc=>acc.codigo !== a.codigo))} className="text-slate-300 hover:text-rose-500 transition-colors p-1"><i data-lucide="trash-2" className="w-4 h-4"></i></button></td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div className="h-full flex flex-col items-center justify-center text-slate-400 italic">
+                                                <i data-lucide="book-x" className="w-16 h-16 mb-4 text-slate-200"></i>
+                                                Catálogo en blanco. <br/>Añade cuentas manualmente o importa tu Excel/TXT.
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -1249,17 +1467,17 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                             {/* TAB: CONSULTOR IA                       */}
                             {/* ======================================= */}
                             {activeTab === 'consultor-ia' && (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[600px]">
                                         <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-4">
-                                            <h3 className="font-bold text-base flex items-center gap-2"><i data-lucide="file-check-2" className="text-indigo-500"></i> Auditoría Fiscal SAT</h3>
+                                            <h3 className="font-bold text-base flex items-center gap-2"><i data-lucide="file-check-2" className="text-indigo-500"></i> Auditoría Fiscal SAT ({globalMonth}/{globalYear})</h3>
                                             <button onClick={handleGenerateFiscalReport} disabled={loadingAiReport} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm">{loadingAiReport ? 'Redactando...' : 'Generar Reporte'}</button>
                                         </div>
                                         <div className="flex-1 bg-slate-50 p-5 rounded-lg border border-slate-200 text-[13px] overflow-y-auto whitespace-pre-wrap font-sans text-slate-700 leading-relaxed">
                                             {aiReport ? aiReport : (
-                                                <div className="h-full flex flex-col items-center justify-center text-slate-400 italic">
+                                                <div className="h-full flex flex-col items-center justify-center text-slate-400 italic text-center">
                                                     <i data-lucide="file-text" className="w-12 h-12 mb-3 text-slate-300"></i>
-                                                    El agente evaluará retenciones, IVA y discrepancia fiscal.
+                                                    El agente evaluará retenciones, IVA y discrepancia fiscal <br/> basado en los datos cargados del periodo.
                                                 </div>
                                             )}
                                         </div>
@@ -1295,8 +1513,8 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                 <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
                                     
                                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-indigo-500">
-                                        <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><i data-lucide="building-2"></i> Gestión Multiempresa Segura</h3>
-                                        <p className="text-xs text-slate-500 mb-6">Administra múltiples perfiles de empresas. Sincronizado en tiempo real en la nube segura de Firebase.</p>
+                                        <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><i data-lucide="building-2"></i> Gestión Multiempresa</h3>
+                                        <p className="text-xs text-slate-500 mb-6">Administra múltiples perfiles de empresas para tu conciliación local.</p>
                                         
                                         <div className="space-y-3 mb-6 max-h-[250px] overflow-y-auto pr-2">
                                             {companies.map(c => (

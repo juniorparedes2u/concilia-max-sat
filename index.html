@@ -4,16 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ConciliaMax - ERP Contable & SAT Inteligente</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <!-- SheetJS (Excel y CSV) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
-    <!-- Firebase SDK (Modular via compat for single-file integration) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -40,12 +35,10 @@
 <body class="text-slate-900 antialiased min-h-screen flex flex-col">
     <div id="root" class="flex-1 flex flex-col"></div>
 
-    <!-- React & Babel -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- App Logic -->
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
@@ -497,6 +490,7 @@
                 }
             };
 
+            // --- FEATURE SENIOR: MOTOR HEURÍSTICO DE PARSEO BANCARIO ---
             const handleBankUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -506,36 +500,112 @@
                         const bstr = evt.target.result;
                         const wb = XLSX.read(bstr, { type: 'binary' });
                         const ws = wb.Sheets[wb.SheetNames[0]];
-                        const data = XLSX.utils.sheet_to_json(ws);
+                        // Parsear como matriz pidiendo explícitamente arrays
+                        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
                         
-                        let idCounter = bankMovements.length + 1;
-                        const parsedMovements = data.map((row) => {
-                            const cargo = parseFloat(row.Cargo || row.cargo || row.CARGO || row.Retiro || row.retiro || row['Cargo/Retiro'] || 0);
-                            const abono = parseFloat(row.Abono || row.abono || row.ABONO || row.Deposito || row.deposito || row['Abono/Deposito'] || 0);
+                        let headerRowIdx = -1;
+                        let colMap = {};
+                        
+                        // Buscar heurísticamente la fila de encabezados (buscamos 'fecha', 'descripción', 'depósito' / 'abono')
+                        for (let i = 0; i < Math.min(data.length, 30); i++) {
+                            const row = data[i];
+                            if (!row || !row.length) continue;
+                            const rowStr = row.map(c => String(c||'').toLowerCase()).join('|');
                             
-                            let fechaRaw = row.Fecha || row.fecha || row.FECHA || row.Date || row.date || new Date().toISOString().split('T')[0];
-                            if(typeof fechaRaw === 'number') { 
-                                fechaRaw = new Date(Math.round((fechaRaw - 25569)*86400*1000)).toISOString().split('T')[0];
-                            } else if (typeof fechaRaw === 'string' && fechaRaw.includes('/')) {
-                                const parts = fechaRaw.split('/');
-                                if(parts.length === 3) fechaRaw = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                            if (rowStr.includes('fecha') && 
+                               (rowStr.includes('descripci') || rowStr.includes('concepto')) && 
+                               (rowStr.includes('depósito') || rowStr.includes('abono') || rowStr.includes('retiro') || rowStr.includes('cargo'))) {
+                                
+                                headerRowIdx = i;
+                                // Mapear índices
+                                row.forEach((colName, idx) => {
+                                    const name = String(colName || '').toLowerCase().trim();
+                                    if (name.includes('fecha')) colMap.fecha = idx;
+                                    if (name.includes('descripci') || name.includes('concepto')) colMap.descripcion = idx;
+                                    if (name.includes('depósito') || name.includes('abono')) colMap.abono = idx;
+                                    if (name.includes('retiro') || name.includes('cargo')) colMap.cargo = idx;
+                                    if (name.includes('referencia')) colMap.referencia = idx;
+                                });
+                                break;
+                            }
+                        }
+
+                        if(colMap.referencia === undefined) colMap.referencia = -1;
+
+                        let idCounter = bankMovements.length + 1;
+                        const parsedMovements = [];
+                        let lastMovement = null;
+
+                        if (headerRowIdx !== -1) {
+                            for (let i = headerRowIdx + 1; i < data.length; i++) {
+                                const row = data[i];
+                                if (!row || !row.length) continue;
+
+                                let fechaRaw = row[colMap.fecha];
+                                let desc = String(row[colMap.descripcion] || '').trim();
+                                
+                                const cleanAmount = (val) => {
+                                    if(typeof val === 'number') return val;
+                                    if(!val || val === '-') return 0;
+                                    const clean = String(val).replace(/[$,\s]/g, '');
+                                    const num = parseFloat(clean);
+                                    return isNaN(num) ? 0 : num;
+                                };
+
+                                let abono = cleanAmount(row[colMap.abono]);
+                                let cargo = cleanAmount(row[colMap.cargo]);
+
+                                // Detección de filas de continuación (típico de Banamex/Santander)
+                                if (!fechaRaw && abono === 0 && cargo === 0 && desc) {
+                                    if (lastMovement) {
+                                        lastMovement.descripcion += " | " + desc;
+                                        // Extraer referencia oculta en el texto si existe
+                                        const refMatch = desc.match(/(?:referencia num[é|e]rica:\s*)([a-z0-9\s]+)/i);
+                                        if(refMatch) lastMovement.referencia = refMatch[1].trim();
+                                    }
+                                    continue;
+                                }
+
+                                if (abono > 0 || cargo > 0) {
+                                    let fechaLimpia = new Date().toISOString().split('T')[0];
+                                    if (typeof fechaRaw === 'number') { 
+                                        fechaLimpia = new Date(Math.round((fechaRaw - 25569)*86400*1000)).toISOString().split('T')[0];
+                                    } else if (typeof fechaRaw === 'string') {
+                                        const parts = fechaRaw.split(/[\/\-]/);
+                                        if (parts.length === 3) {
+                                            if (parts[0].length === 4) fechaLimpia = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+                                            else fechaLimpia = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                                        } else {
+                                            fechaLimpia = fechaRaw.substring(0,10);
+                                        }
+                                    }
+
+                                    let ref = (colMap.referencia !== -1 && row[colMap.referencia]) ? String(row[colMap.referencia]).trim() : '';
+                                    if(!ref) {
+                                        const refMatch = desc.match(/(?:referencia num[é|e]rica:\s*|ref:\s*)([a-z0-9\s]+)/i);
+                                        if(refMatch) ref = refMatch[1].trim();
+                                        else ref = `REF-${idCounter}`;
+                                    }
+
+                                    lastMovement = { id: idCounter++, fecha: fechaLimpia, referencia: ref.substring(0, 30), descripcion: desc, cargo, abono, tipo: cargo > 0 ? 'Egreso' : 'Ingreso' };
+                                    parsedMovements.push(lastMovement);
+                                }
                             }
 
-                            const referencia = row.Referencia || row.referencia || row.REFERENCIA || row.Ref || `REF-${idCounter}`;
-                            const descripcion = row.Descripcion || row.descripcion || row.DESCRIPCION || row.Concepto || row.concepto || 'Movimiento Bancario';
+                            if (parsedMovements.length > 0) {
+                                setBankMovements(prev => [...prev, ...parsedMovements]);
+                                triggerToast(`🏦 ${parsedMovements.length} movimientos bancarios importados al sistema.`);
+                            } else {
+                                triggerToast('⚠️ No se detectaron movimientos en el formato extraído.');
+                            }
 
-                            return { id: idCounter++, fecha: fechaRaw.substring(0,10), referencia, descripcion, cargo, abono, tipo: cargo > 0 ? 'Egreso' : 'Ingreso' };
-                        }).filter(m => m.cargo > 0 || m.abono > 0);
-
-                        if (parsedMovements.length > 0) {
-                            setBankMovements(prev => [...prev, ...parsedMovements]);
-                            triggerToast(`🏦 ${parsedMovements.length} movimientos bancarios importados al sistema.`);
                         } else {
-                            triggerToast('⚠️ El archivo no contiene columnas de Cargo o Abono reconocibles.');
+                            triggerToast('❌ Error: El sistema no detectó las columnas estándar (Fecha, Descripción, Depósito, Retiro). Verifica el formato.');
                         }
                     } catch (error) { triggerToast('❌ Error leyendo extracto: ' + error.message); }
                 };
                 reader.readAsBinaryString(file);
+                e.target.value = null;
             };
 
             const handleCatalogUpload = (e) => {
@@ -874,7 +944,6 @@ Datos del periodo: Ingresos Banco: $${dashboardStats.totalBancosIngreso}, Egreso
                     const matchId = Object.keys(matches).find(k => matches[k] === c.uuid);
                     const bankRef = matchId ? bankMovements.find(m => m.id == matchId)?.referencia : 'No Conciliado';
                     
-                    // Extraer solo el código para el Excel si viene "Código - Nombre"
                     const cuentaLimpia = meta.ctaContable ? meta.ctaContable.split(' - ')[0].trim() : '';
 
                     return {
@@ -1053,10 +1122,23 @@ Datos del periodo: Ingresos Banco: $${dashboardStats.totalBancosIngreso}, Egreso
                                         </div>
                                         <div className="flex gap-2 w-full md:w-auto">
                                             <button onClick={handleBulkAiCategorization} disabled={bulkAiLoading || activeCfdis.filter(c => c.tipo === 'Recibido').length === 0} className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors flex-1 md:flex-none disabled:opacity-50">
-                                                {bulkAiLoading ? <span className="animate-pulse">Pensando...</span> : <><i data-lucide="sparkles" className="w-4 h-4"></i> Auto-Clasificar Masivo (IA)</>}
+                                                {bulkAiLoading ? <span className="animate-pulse">Pensando...</span> : <><i data-lucide="sparkles" className="w-4 h-4"></i> Auto-Clasificar (IA)</>}
                                             </button>
                                             <button onClick={exportToExcelGastos} className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm flex items-center gap-2"><i data-lucide="download" className="w-4 h-4"></i> Exportar</button>
                                         </div>
+                                    </div>
+
+                                    {/* NUEVO: PANEL DE ACCESOS RÁPIDOS */}
+                                    <div className="flex gap-3 animate-fade-in">
+                                        <button onClick={() => setActiveTab('bancos')} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 hover:border-indigo-300 transition-colors flex items-center gap-2 shadow-sm">
+                                            <i data-lucide="landmark" className="w-4 h-4 text-indigo-500"></i> Ir a Bancos
+                                        </button>
+                                        <button onClick={() => setActiveTab('conciliacion')} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 hover:border-emerald-300 transition-colors flex items-center gap-2 shadow-sm">
+                                            <i data-lucide="git-compare" className="w-4 h-4 text-emerald-500"></i> Ir a Conciliación
+                                        </button>
+                                        <button onClick={() => setActiveTab('polizas')} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-50 hover:border-amber-300 transition-colors flex items-center gap-2 shadow-sm">
+                                            <i data-lucide="file-spreadsheet" className="w-4 h-4 text-amber-500"></i> Ir a Pólizas
+                                        </button>
                                     </div>
 
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1209,7 +1291,6 @@ Datos del periodo: Ingresos Banco: $${dashboardStats.totalBancosIngreso}, Egreso
                                                     </div>
                                                     <div className="flex items-center gap-3">
                                                         <span className={`text-[10px] font-bold border px-2 py-1 rounded-full bg-white shadow-sm ${p.tipo === 'Diario' ? 'border-indigo-200 text-indigo-700' : 'border-slate-200 text-slate-400'}`}><i data-lucide="link" className="w-3 h-3 inline mr-1"></i>{p.uuidAsociado.substring(0,18)}</span>
-                                                        {/* BOTÓN PARA ELIMINAR PÓLIZAS MANUALES */}
                                                         {p.isManual && (
                                                             <button onClick={() => handleDeleteManualPolicy(p.id)} className="text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 p-1.5 rounded transition-colors shadow-sm" title="Eliminar Póliza Manual">
                                                                 <i data-lucide="trash-2" className="w-4 h-4"></i>

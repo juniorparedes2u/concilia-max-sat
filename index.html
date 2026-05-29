@@ -131,14 +131,38 @@
             let fechaRaw = getAttrIgnoreCase(comp, "Fecha") || new Date().toISOString();
             let fecha = fechaRaw.substring(0, 10);
 
+            const total = parseFloat(getAttrIgnoreCase(comp, "Total") || 0);
+            const subtotal = parseFloat(getAttrIgnoreCase(comp, "SubTotal") || 0);
+
+            // --- BUGFIX SENIOR: Motor robusto de extracción fiscal ---
+            // Nunca asumas que Total - Subtotal es igual al IVA. Existen retenciones, IEPS y locales.
+            let iva = 0;
+            const impuestosNode = getElementByLocalName(xmlDoc, "Impuestos");
+            if (impuestosNode) {
+                const traslados = getElementByLocalName(impuestosNode, "Traslados");
+                if (traslados) {
+                    const nodosTraslado = traslados.getElementsByTagName('*');
+                    for (let i = 0; i < nodosTraslado.length; i++) {
+                        const t = nodosTraslado[i];
+                        if ((t.localName || t.tagName.split(':').pop()).toLowerCase() === 'traslado') {
+                            if (getAttrIgnoreCase(t, 'Impuesto') === '002') {
+                                iva += parseFloat(getAttrIgnoreCase(t, 'Importe') || 0);
+                            }
+                        }
+                    }
+                }
+            }
+            // Fallback histórico por si el XML viene mal formado pero hay diferencia exacta
+            if (iva === 0 && (total - subtotal) > 0.01) { iva = total - subtotal; }
+
             return {
                 uuid,
                 fecha,
                 rfcEmisor, nombreEmisor: getAttrIgnoreCase(emisor, "Nombre") || "Proveedor",
                 rfcReceptor, nombreReceptor: getAttrIgnoreCase(receptor, "Nombre") || "Cliente",
-                total: parseFloat(getAttrIgnoreCase(comp, "Total") || 0),
-                subtotal: parseFloat(getAttrIgnoreCase(comp, "SubTotal") || 0),
-                iva: parseFloat(getAttrIgnoreCase(comp, "Total") || 0) - parseFloat(getAttrIgnoreCase(comp, "SubTotal") || 0),
+                total,
+                subtotal,
+                iva,
                 tipo,
                 concepto: conceptoStr,
                 status: 'Vigente'
@@ -242,6 +266,9 @@
             const [bankAccountCode, setBankAccountCode] = useState('102-01-001');
             const [showManualPolicyForm, setShowManualPolicyForm] = useState(false);
             const [newManualPolicy, setNewManualPolicy] = useState({ fecha: new Date().toISOString().split('T')[0], concepto: 'Provisión de Gastos', importe: '', cuentaCargo: '', cuentaAbono: '' });
+            
+            // --- NUEVO ESTADO SENIOR: Referencia para Carga Masiva ---
+            const fileInputBatchRef = useRef(null);
 
             // --- 1. INICIALIZAR FIREBASE Y AUTH ---
             useEffect(() => {
@@ -577,6 +604,68 @@
                 setNewManualPolicy({ ...newManualPolicy, importe: '', cuentaCargo: '', cuentaAbono: '' });
                 setShowManualPolicyForm(false);
                 triggerToast('📝 Póliza de diario manual registrada exitosamente.');
+            };
+
+            // --- FEATURE SENIOR: CARGA MASIVA DE PÓLIZAS DESDE CSV/EXCEL ---
+            const handleBatchPoliciesUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const data = XLSX.utils.sheet_to_json(ws);
+                        
+                        const newPols = [];
+                        let timestamp = Date.now();
+
+                        data.forEach((row, idx) => {
+                            const fechaRaw = row.Fecha || row.fecha || new Date().toISOString().split('T')[0];
+                            const concepto = row.Concepto || row.concepto || row.Descripcion || 'Asiento Masivo';
+                            const importe = parseFloat(row.Importe || row.importe || row.Total || 0);
+                            const cuentaCargo = row.CuentaCargo || row.cuentacargo || row.Cargo;
+                            const cuentaAbono = row.CuentaAbono || row.cuentaabono || row.Abono;
+
+                            if (importe > 0 && cuentaCargo && cuentaAbono) {
+                                let fechaLimpia = fechaRaw;
+                                if (typeof fechaRaw === 'number') { // Formato serial de Excel
+                                    fechaLimpia = new Date(Math.round((fechaRaw - 25569) * 86400 * 1000)).toISOString().split('T')[0];
+                                } else if (typeof fechaRaw === 'string' && fechaRaw.includes('/')) {
+                                    const parts = fechaRaw.split('/');
+                                    if (parts.length === 3) fechaLimpia = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                                } else {
+                                    fechaLimpia = fechaRaw.toString().substring(0, 10);
+                                }
+
+                                newPols.push({
+                                    id: `BATCH-${timestamp}-${idx}`,
+                                    fecha: fechaLimpia,
+                                    tipo: 'Diario',
+                                    numero: 9000 + manualPolicies.length + idx,
+                                    concepto: concepto.toString(),
+                                    uuidAsociado: 'SIN_XML_BATCH',
+                                    movimientos: [
+                                        { cuenta: cuentaCargo.toString(), nombre: accounts.find(a => a.codigo === cuentaCargo.toString())?.nombre || 'Cargo Masivo', cargo: importe, abono: 0, rfc: '' },
+                                        { cuenta: cuentaAbono.toString(), nombre: accounts.find(a => a.codigo === cuentaAbono.toString())?.nombre || 'Abono Masivo', cargo: 0, abono: importe, rfc: '' }
+                                    ]
+                                });
+                            }
+                        });
+
+                        if (newPols.length > 0) {
+                            setManualPolicies(prev => [...prev, ...newPols]);
+                            triggerToast(`🚀 ${newPols.length} pólizas importadas por lote exitosamente.`);
+                        } else {
+                            triggerToast('⚠️ Error: Tu Excel/CSV debe tener las columnas: Fecha, Concepto, Importe, CuentaCargo, CuentaAbono.');
+                        }
+                    } catch (error) {
+                        triggerToast('❌ Error leyendo archivo batch: ' + error.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+                e.target.value = null; // Reset input
             };
 
             // --- MÉTODOS DE INTELIGENCIA ARTIFICIAL AVANZADA ---
@@ -1311,6 +1400,10 @@ Dime en un párrafo conciso y profesional de 3 a 4 líneas: ¿Hay riesgo de paga
                                             <button onClick={() => setShowManualPolicyForm(!showManualPolicyForm)} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-2 px-4 rounded-lg text-xs shadow-sm transition-colors flex items-center gap-2 border border-indigo-200">
                                                 <i data-lucide={showManualPolicyForm ? "minus-circle" : "plus-circle"} className="w-4 h-4"></i> Asiento Diario
                                             </button>
+                                            <button onClick={() => fileInputBatchRef.current.click()} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold py-2 px-4 rounded-lg text-xs shadow-sm transition-colors flex items-center gap-2 border border-emerald-200">
+                                                <i data-lucide="upload-cloud" className="w-4 h-4"></i> Importar Lote CSV
+                                            </button>
+                                            <input type="file" accept=".csv,.xls,.xlsx" ref={fileInputBatchRef} onChange={handleBatchPoliciesUpload} className="hidden" />
                                             <button onClick={downloadContpaqiPolizas} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-xs shadow-md transition-colors flex items-center gap-2">
                                                 <i data-lucide="download" className="w-4 h-4"></i> Exportar TXT
                                             </button>
